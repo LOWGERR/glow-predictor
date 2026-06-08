@@ -452,7 +452,8 @@ async function fetchForecast() {
     hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,precipitation_probability,visibility,temperature_2m,weather_code',
     daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
     timezone: 'auto',
-    forecast_days: 3
+    forecast_days: 3,
+    models: 'ecmwf_ifs'
   });
 
   try {
@@ -462,6 +463,8 @@ async function fetchForecast() {
     clearTimeout(timeout);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    // 标记数据来源
+    data._source = data.meta && data.meta.models ? 'ECMWF' : 'Open-Meteo';
     state.forecastData = data;
     renderAll(data);
   } catch(e) {
@@ -777,6 +780,7 @@ function buildPredictionCard(label, type, score, data, tips, timeISO, dateLabel)
         `).join('')}
       </div>
       ${tips ? `<div class="card-tips">${tips}</div>` : ''}
+      <div class="data-source">数据来源: ECMWF (欧洲中期天气预报中心)</div>
     </div>
   </div>`;
 }

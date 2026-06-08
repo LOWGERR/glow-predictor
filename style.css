@@ -490,6 +490,17 @@ body {
 }
 .map-locate-btn:active { background: rgba(255,152,0,0.12); color: var(--accent); }
 
+/* === 数据来源 === */
+.data-source {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  text-align: right;
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  opacity: 0.6;
+}
+
 /* === 响应式 === */
 @media (max-width: 380px) {
   .factors { grid-template-columns: 1fr 1fr; }
