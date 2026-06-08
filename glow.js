@@ -110,10 +110,10 @@ async function onGeoSuccess(lat, lon, silent) {
   let country = '';
   try {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 3000);
+    setTimeout(() => controller.abort(), 4000);
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=zh`,
-      { signal: controller.signal }
+      { signal: controller.signal, headers: { 'User-Agent': 'GlowPredictor/1.0' } }
     );
     const r = await res.json();
     if (r && r.address) {
@@ -124,7 +124,10 @@ async function onGeoSuccess(lat, lon, silent) {
   } catch(e) {
     console.warn('反向地理编码失败', e.message);
   }
-  if (!cityName) cityName = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  // Nominatim 失败时改用经纬度近似最近城市（而非直接显示坐标）
+  if (!cityName) {
+    cityName = `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
+  }
   if (silent && state.name && state.name !== '北京') return; // 后台定位：已有非默认位置时不覆盖
   selectLocation(lat, lon, cityName, country);
 }
@@ -167,8 +170,8 @@ function initMapInstance() {
       attributionControl: true
     }).setView(center, zoom);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap © CARTO',
       maxZoom: 18
     }).addTo(_mapInstance);
 
@@ -242,7 +245,7 @@ async function confirmMapPick() {
   }
 
   closeMapPicker();
-  selectLocation(lat, lon, cityName || `${lat.toFixed(2)},${lon.toFixed(2)}`, country);
+  selectLocation(lat, lon, cityName || `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`, country);
 }
 
 function closeMapPicker() {
@@ -690,11 +693,7 @@ function formatDuration(ms) {
   const h = Math.floor(ms / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
   const s = Math.floor((ms % 60000) / 1000);
-  const parts = [];
-  if (h > 0) parts.push(`${h}小时`);
-  if (m > 0) parts.push(`${m}分钟`);
-  if (h === 0 && m === 0) parts.push(`${s}秒`);
-  return parts.join('');
+  return `${h}小时${String(m).padStart(2, '0')}分${String(s).padStart(2, '0')}秒`;
 }
 
 // === 演示模式 ===
