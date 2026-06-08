@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>朝霞晚霞预测 · 摄影助手</title>
+<link rel="stylesheet" href="style.css?t=2">
+</head>
+<body>
+<div class="app">
+  <!-- 顶部：位置 & 天气概览 -->
+  <header class="header">
+    <div class="header-top">
+      <h1>🌅 朝霞晚霞</h1>
+      <span class="header-badge">摄影助手</span>
+    </div>
+    <div class="location-row" id="locationRow">
+      <span class="loc-icon">📍</span>
+      <span class="loc-name" id="locName">—</span>
+    </div>
+  </header>
+
+  <!-- 搜索 -->
+  <div class="search-box">
+    <input type="text" id="cityInput" placeholder="搜索城市…" autocomplete="off">
+    <button id="searchBtn">🔍</button>
+    <button id="locateBtn">📍</button>
+  </div>
+  <div class="search-results" id="searchResults"></div>
+  <button class="map-pick-btn" id="mapPickBtn">🗺️ 在地图上选择位置</button>
+
+  <!-- 加载 -->
+  <div class="loading" id="loading" style="display:none">
+    <div class="spinner"></div>
+    <p>获取气象数据…</p>
+  </div>
+
+  <!-- 天气概览卡片 -->
+  <div class="weather-card" id="weatherCard" style="display:none">
+    <div class="weather-main">
+      <div class="weather-icon" id="weatherIcon">☀️</div>
+      <div class="weather-temp" id="weatherTemp">--°</div>
+      <div class="weather-desc" id="weatherDesc">--</div>
+    </div>
+    <div class="weather-details">
+      <div class="wd-item">
+        <span class="wd-label">💧 湿度</span>
+        <span class="wd-val" id="wdHumidity">--</span>
+      </div>
+      <div class="wd-item">
+        <span class="wd-label">☁️ 云量</span>
+        <span class="wd-val" id="wdCloud">--</span>
+      </div>
+      <div class="wd-item">
+        <span class="wd-label">👁 能见度</span>
+        <span class="wd-val" id="wdVisibility">--</span>
+      </div>
+      <div class="wd-item">
+        <span class="wd-label">🌧 降水</span>
+        <span class="wd-val" id="wdPrecip">--</span>
+      </div>
+    </div>
+    <!-- 日出日落 + 倒计时 -->
+    <div class="sun-times">
+      <div class="sun-block sunrise-block">
+        <div class="sun-icon">🌄</div>
+        <div class="sun-info">
+          <div class="sun-label">日出</div>
+          <div class="sun-time" id="sunriseTime">--:--</div>
+          <div class="sun-countdown" id="sunriseCountdown"></div>
+        </div>
+      </div>
+      <div class="sun-divider"></div>
+      <div class="sun-block sunset-block">
+        <div class="sun-icon">🌇</div>
+        <div class="sun-info">
+          <div class="sun-label">日落</div>
+          <div class="sun-time" id="sunsetTime">--:--</div>
+          <div class="sun-countdown" id="sunsetCountdown"></div>
+        </div>
+      </div>
+    </div>
+    <!-- 日出/日落倒计时大提示 -->
+    <div class="countdown-bar" id="countdownBar"></div>
+  </div>
+
+  <!-- 选项卡 -->
+  <div class="tab-bar" id="tabBar">
+    <button class="tab-btn active" data-tab="0">今天</button>
+    <button class="tab-btn" data-tab="1">明天</button>
+    <button class="tab-btn" data-tab="2">后天</button>
+  </div>
+  <div class="tab-date" id="tabDate"></div>
+
+  <!-- 预测内容 -->
+  <div class="predictions" id="predictions"></div>
+
+  <!-- 图例 -->
+  <div class="legend">
+    <h3>📊 评分参考</h3>
+    <div class="legend-items">
+      <div class="legend-item"><span class="dot" style="background:#ff4444"></span> 0-29 不推荐</div>
+      <div class="legend-item"><span class="dot" style="background:#ff9800"></span> 30-49 可关注</div>
+      <div class="legend-item"><span class="dot" style="background:#ffeb3b"></span> 50-69 值得出动</div>
+      <div class="legend-item"><span class="dot" style="background:#4caf50"></span> 70-89 强烈推荐</div>
+      <div class="legend-item"><span class="dot" style="background:#e040fb"></span> 90+ 必出大片</div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>数据来源：Open-Meteo · 仅供摄影参考</p>
+  </footer>
+</div>
+
+<!-- 地图选择器弹窗 -->
+<div class="map-modal" id="mapModal" style="display:none">
+  <div class="map-header">
+    <button class="map-cancel-btn" id="mapCancelBtn">取消</button>
+    <span class="map-title">点击地图选择位置</span>
+    <button class="map-confirm-btn" id="mapConfirmBtn">确定</button>
+  </div>
+  <div class="map-container" id="mapContainer"></div>
+  <div class="map-coords" id="mapCoords"></div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="glow.js"></script>
+</body>
+</html>
