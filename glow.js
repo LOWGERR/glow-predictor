@@ -1,15 +1,18 @@
 /* === 朝霞晚霞预测 · 摄影助手 - v2 === */
 
+const AMAP_KEY = '9a559408bacf3862588c08ad3a273edc';
+const AMAP_SEARCH_URL = 'https://restapi.amap.com/v3/place/text';
 const GEO_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 
 // DOM
-let $cityInput, $searchBtn, $locateBtn, $searchResults, $loading, $predictions;
+let $loading, $predictions;
 let $locName, $weatherCard, $tabBar, $tabDate;
 let $weatherIcon, $weatherTemp, $weatherDesc;
 let $wdHumidity, $wdCloud, $wdVisibility, $wdPrecip;
 let $sunriseTime, $sunsetTime, $sunriseCountdown, $sunsetCountdown, $countdownBar;
 let $mapPickBtn, $mapModal, $mapContainer, $mapCoords, $mapCancelBtn, $mapConfirmBtn;
+let $mapLocateBtn, $mapSearchInput, $mapSearchBtn, $mapSearchResults;
 
 // State
 const state = {
@@ -23,9 +26,8 @@ const state = {
 function init() {
   bindDOM();
   $tabBar.addEventListener('click', handleTabClick);
-  $searchBtn.addEventListener('click', () => searchCity());
-  $locateBtn.addEventListener('click', autoLocate);
-  $cityInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchCity(); });
+  // $locateBtn.addEventListener('click', autoLocate);
+  document.getElementById('locateBtn').addEventListener('click', autoLocate);
   $mapPickBtn.addEventListener('click', openMapPicker);
 
   const saved = localStorage.getItem('glow_predictor_location');
@@ -45,10 +47,7 @@ function init() {
 }
 
 function bindDOM() {
-  $cityInput = document.getElementById('cityInput');
-  $searchBtn = document.getElementById('searchBtn');
-  $locateBtn = document.getElementById('locateBtn');
-  $searchResults = document.getElementById('searchResults');
+  
   $loading = document.getElementById('loading');
   $predictions = document.getElementById('predictions');
   $locName = document.getElementById('locName');
@@ -73,9 +72,16 @@ function bindDOM() {
   $mapCoords = document.getElementById('mapCoords');
   $mapCancelBtn = document.getElementById('mapCancelBtn');
   $mapConfirmBtn = document.getElementById('mapConfirmBtn');
+  $mapLocateBtn = document.getElementById('mapLocateBtn');
+  $mapSearchInput = document.getElementById('mapSearchInput');
+  $mapSearchBtn = document.getElementById('mapSearchBtn');
+  $mapSearchResults = document.getElementById('mapSearchResults');
   // 地图弹窗事件
   $mapCancelBtn.addEventListener('click', closeMapPicker);
   $mapConfirmBtn.addEventListener('click', confirmMapPick);
+  $mapLocateBtn.addEventListener('click', locateOnMap);
+  $mapSearchBtn.addEventListener('click', mapSearch);
+  $mapSearchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') mapSearch(); });
 }
 
 function tryGeoUpdate() {
@@ -89,15 +95,16 @@ function tryGeoUpdate() {
 
 function autoLocate() {
   if (!navigator.geolocation) { alert('浏览器不支持定位'); return; }
-  $locateBtn.textContent = '⏳';
+  const btn = document.getElementById('locateBtn');
+  btn.textContent = '⏳ 定位中…';
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       onGeoSuccess(pos.coords.latitude, pos.coords.longitude, false);
-      $locateBtn.textContent = '📍';
+      btn.textContent = '📍 获取当前位置';
     },
     (err) => {
       console.warn('定位失败', err);
-      $locateBtn.textContent = '📍';
+      btn.textContent = '📍 获取当前位置';
       if (!state.lat) selectLocation(39.9042, 116.4074, '北京', '中国');
     },
     { timeout: 3000, maximumAge: 300000 }
@@ -105,38 +112,25 @@ function autoLocate() {
 }
 
 async function onGeoSuccess(lat, lon, silent) {
-  // 反向地理编码获取城市名
-  let cityName = '';
-  let country = '';
-  try {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=zh`,
-      { signal: controller.signal, headers: { 'User-Agent': 'GlowPredictor/1.0' } }
-    );
-    const r = await res.json();
-    if (r && r.address) {
-      const a = r.address;
-      cityName = a.city || a.town || a.county || a.municipality || a.village || a.state_district || a.state || '';
-      country = a.country || '';
-    }
-  } catch(e) {
-    console.warn('反向地理编码失败', e.message);
+  // 逆地理编码需要 GCJ-02（高德坐标），但天气预报用原始 WGS-84 坐标
+  const gcj02 = await convertWGS84toGCJ02(lat, lon);
+  let displayName = '', country = '';
+  const result = await getAmapRegeo(gcj02.lat, gcj02.lon);
+  if (result) {
+    displayName = result.displayName;
+    country = result.country;
+  } else {
+    displayName = `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
   }
-  // Nominatim 失败时改用经纬度近似最近城市（而非直接显示坐标）
-  if (!cityName) {
-    cityName = `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`;
-  }
-  if (silent && state.name && state.name !== '北京') return; // 后台定位：已有非默认位置时不覆盖
-  selectLocation(lat, lon, cityName, country);
+  if (silent && state.name && !state.name.includes('°') && state.name !== '北京') return;
+  // 预报使用原始 WGS-84 坐标（GPS 原生），逆地理只用 GCJ-02 给高德 API
+  selectLocation(lat, lon, displayName, country);
 }
 
 function selectLocation(lat, lon, name, country) {
   state.lat = lat; state.lon = lon;
   state.name = name || `${lat.toFixed(2)},${lon.toFixed(2)}`;
   state.country = country;
-  $searchResults.innerHTML = ''; $cityInput.value = '';
   $locName.textContent = state.name;
   localStorage.setItem('glow_predictor_location', JSON.stringify({ lat, lon, name: state.name, country }));
   state.activeTab = 0;
@@ -144,69 +138,207 @@ function selectLocation(lat, lon, name, country) {
   fetchForecast();
 }
 
-// === 地图选择器 ===
+// === 地图选择器（高德地图） ===
 let _mapInstance = null;
 let _mapMarker = null;
 let _mapLat = null;
 let _mapLon = null;
+let _mapLocating = false;
+
+// 内嵌 SVG 红色大头针（避免高德默认图标因网络/cache 加载失败）
+const MARKER_SVG = 'data:image/svg+xml;base64,' + btoa(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 34">' +
+  '<path d="M12.5 0C5.6 0 0 5.6 0 12.5c0 9.2 11.3 20.5 12.1 21.3.2.2.4.3.7.3.2 0 .4-.1.6-.2.8-.8 12.1-12.1 12.1-21.3C25.5 5.6 19.9 0 12.5 0zm0 19c-3.6 0-6.5-2.9-6.5-6.5S8.9 6 12.5 6s6.5 2.9 6.5 6.5-2.9 6.5-6.5 6.5z" fill="#FF3B30"/></svg>'
+);
+
+// === 坐标转换（WGS-84 ? GCJ-02）===
+// 火星坐标系偏移量算法
+function _transformLat(x, y) {
+  let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+  ret += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0;
+  ret += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320.0 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0;
+  return ret;
+}
+function _transformLon(x, y) {
+  let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+  ret += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0;
+  ret += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0;
+  return ret;
+}
+
+// WGS-84 ? GCJ-02（高德地图专用）
+function convertWGS84toGCJ02(lat, lon) {
+  return new Promise((resolve) => {
+    AMap.convertFrom([lon, lat], 'gps', (status, result) => {
+      if (status === 'complete' && result.info === 'ok') {
+        const l = result.locations[0];
+        resolve({ lat: l.getLat(), lon: l.getLng() });
+      } else {
+        // API 失效时使用本地算法
+        const dlat = _transformLat(lon - 105.0, lat - 35.0);
+        const dlon = _transformLon(lon - 105.0, lat - 35.0);
+        const radLat = lat / 180.0 * Math.PI;
+        let magic = Math.sin(radLat);
+        magic = 1 - 0.00669342162296594323 * magic * magic;
+        const sqrtMagic = Math.sqrt(magic);
+        resolve({ lat: lat + (dlat * 180.0) / ((6378245.0 * (1 - 0.00669342162296594323)) / (magic * sqrtMagic) * Math.PI), lon: lon + (dlon * 180.0) / ((6378245.0 / sqrtMagic) * Math.cos(radLat) * Math.PI) });
+      }
+    });
+  });
+}
+
+// GCJ-02 ? WGS-84（迭代逼近，用于地图点选的坐标修正）
+function convertGCJ02toWGS84(lat, lon) {
+  const dlat = _transformLat(lon - 105.0, lat - 35.0);
+  const dlon = _transformLon(lon - 105.0, lat - 35.0);
+  const radLat = lat / 180.0 * Math.PI;
+  let magic = Math.sin(radLat);
+  magic = 1 - 0.00669342162296594323 * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  const mgLat = lat + (dlat * 180.0) / ((6378245.0 * (1 - 0.00669342162296594323)) / (magic * sqrtMagic) * Math.PI);
+  const mgLon = lon + (dlon * 180.0) / ((6378245.0 / sqrtMagic) * Math.cos(radLat) * Math.PI);
+  return { lat: lat * 2 - mgLat, lon: lon * 2 - mgLon };
+}
 
 function openMapPicker() {
   $mapModal.style.display = 'flex';
-  $mapCoords.textContent = '点击地图上的位置，或拖动标记微调';
+  $mapCoords.textContent = '定位中…';
   $mapConfirmBtn.textContent = '确定';
   $mapConfirmBtn.disabled = true;
-
-  // 等弹窗布局完成后再初始化地图
   setTimeout(initMapInstance, 150);
 }
 
 function initMapInstance() {
-  const center = [state.lat || 39.9, state.lon || 116.4];
-  const zoom = state.lat ? 12 : 10;
+  let initLat = state.lat || 39.9, initLon = state.lon || 116.4;
+  let initZoom = (state.lat) ? 14 : 11;
 
   if (!_mapInstance) {
-    _mapInstance = L.map('mapContainer', {
-      zoomControl: true,
-      attributionControl: true
-    }).setView(center, zoom);
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CARTO',
-      maxZoom: 18
-    }).addTo(_mapInstance);
+    _mapInstance = new AMap.Map('mapContainer', {
+      center: [initLon, initLat],
+      zoom: initZoom,
+      mapStyle: 'amap://styles/light',
+      zoomEnable: true,
+      dragEnable: true,
+      resizeEnable: true,
+      features: ['bg', 'road', 'building', 'point'],
+      showIndoorMap: false
+    });
 
     _mapInstance.on('click', (e) => {
-      _mapLat = e.latlng.lat;
-      _mapLon = e.latlng.lng;
-      placeMarker(e.latlng);
+      _mapLat = e.lnglat.getLat();
+      _mapLon = e.lnglat.getLng();
+      placeMarker(_mapLat, _mapLon);
       updateMapCoordsLabel();
     });
+
+    // GPS ? GCJ-02 转换后定位
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const wgs84 = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          const gcj02 = await convertWGS84toGCJ02(wgs84.lat, wgs84.lon);
+          _mapLat = gcj02.lat; _mapLon = gcj02.lon;
+          _mapInstance.setCenter([_mapLon, _mapLat]);
+          _mapInstance.setZoom(15);
+          placeMarker(_mapLat, _mapLon);
+          updateMapCoordsLabel();
+        },
+        () => {
+          // GPS 失败 ? 回退到 state 位置
+          if (state.lat) {
+            _mapLat = state.lat; _mapLon = state.lon;
+            _mapInstance.setCenter([_mapLon, _mapLat]);
+            _mapInstance.setZoom(14);
+            placeMarker(_mapLat, _mapLon);
+            updateMapCoordsLabel();
+          }
+        },
+        { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
+      );
+    } else if (state.lat) {
+      _mapLat = state.lat; _mapLon = state.lon;
+      _mapInstance.setCenter([_mapLon, _mapLat]);
+      _mapInstance.setZoom(14);
+      placeMarker(_mapLat, _mapLon);
+      updateMapCoordsLabel();
+    }
   } else {
-    _mapInstance.setView(center, zoom);
-    if (_mapMarker) { _mapInstance.removeLayer(_mapMarker); _mapMarker = null; }
+    // 复用已有实例
+    _mapInstance.setCenter([initLon, initLat]);
+    _mapInstance.setZoom(initZoom);
+    if (_mapMarker) { _mapInstance.remove(_mapMarker); _mapMarker = null; }
+    // 尝试 GPS 定位
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const wgs84 = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          const gcj02 = await convertWGS84toGCJ02(wgs84.lat, wgs84.lon);
+          _mapLat = gcj02.lat; _mapLon = gcj02.lon;
+          _mapInstance.setCenter([_mapLon, _mapLat]);
+          _mapInstance.setZoom(15);
+          placeMarker(_mapLat, _mapLon);
+          updateMapCoordsLabel();
+        },
+        () => {},
+        { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
+      );
+    }
   }
-
-  // 如果已有位置，预放标记
-  if (state.lat && !_mapMarker) {
-    const ll = L.latLng(state.lat, state.lon);
-    _mapLat = state.lat;
-    _mapLon = state.lon;
-    placeMarker(ll);
-    updateMapCoordsLabel();
-  }
-
-  _mapInstance.invalidateSize();
 }
 
-function placeMarker(latlng) {
-  if (_mapMarker) _mapInstance.removeLayer(_mapMarker);
-  _mapMarker = L.marker(latlng, { draggable: true }).addTo(_mapInstance);
-  _mapMarker.on('dragend', () => {
-    const ll = _mapMarker.getLatLng();
-    _mapLat = ll.lat;
-    _mapLon = ll.lng;
+function locateOnMap() {
+  if (_mapLocating) return;
+  if (!_mapInstance) { alert('地图尚未初始化'); return; }
+  _mapLocating = true;
+  const btn = document.getElementById('mapLocateBtn');
+  if (btn) btn.innerHTML = '⏳ 获取当前位置';
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        _mapLocating = false;
+        if (btn) btn.innerHTML = '📍 获取当前位置';
+        const wgs84 = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        const gcj02 = await convertWGS84toGCJ02(wgs84.lat, wgs84.lon);
+        _mapLat = gcj02.lat; _mapLon = gcj02.lon;
+        _mapInstance.setCenter([_mapLon, _mapLat]);
+        _mapInstance.setZoom(16);
+        placeMarker(_mapLat, _mapLon);
+        updateMapCoordsLabel();
+      },
+      () => {
+        _mapLocating = false;
+        if (btn) btn.innerHTML = '📍 获取当前位置';
+        alert('定位失败，请检查定位权限');
+      },
+      { timeout: 8000, enableHighAccuracy: true }
+    );
+  }
+}
+
+function placeMarker(lat, lon) {
+  if (!_mapInstance) return;
+  if (_mapMarker) _mapInstance.remove(_mapMarker);
+  // 使用内嵌 SVG 图标（避免高德默认图标资源加载失败的问题）
+  _mapMarker = new AMap.Marker({
+    position: [lon, lat],
+    draggable: true,
+    zIndex: 999,
+    icon: new AMap.Icon({
+      size: new AMap.Size(25, 34),
+      imageSize: new AMap.Size(25, 34),
+      image: MARKER_SVG,
+      imageOffset: new AMap.Pixel(0, 0)
+    })
+  });
+  _mapMarker.on('dragend', (e) => {
+    const pos = e.target.getPosition();
+    _mapLat = pos.getLat();
+    _mapLon = pos.getLng();
     updateMapCoordsLabel();
   });
+  _mapMarker.setMap(_mapInstance);
 }
 
 function updateMapCoordsLabel() {
@@ -221,68 +353,90 @@ async function confirmMapPick() {
   $mapConfirmBtn.textContent = '…';
   $mapConfirmBtn.disabled = true;
 
-  // 先保存坐标，closeMapPicker 会清空
-  const lat = _mapLat, lon = _mapLon;
+  const latGCJ = _mapLat, lonGCJ = _mapLon;
+  // 转换为 WGS-84 用于预报
+  const wgs84 = convertGCJ02toWGS84(latGCJ, lonGCJ);
 
-  // 反向地理编码
-  let cityName = '';
-  let country = '';
-  try {
-    const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort(), 3000);
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=zh`,
-      { signal: ctrl.signal }
-    );
-    const r = await res.json();
-    if (r && r.address) {
-      const a = r.address;
-      cityName = a.city || a.town || a.county || a.municipality || a.village || a.state_district || a.state || '';
-      country = a.country || '';
-    }
-  } catch(e) {
-    console.warn('地图选点反向地理编码失败', e.message);
+  // 高德逆地理编码
+  let cityName = '', country = '';
+  const result = await getAmapRegeo(latGCJ, lonGCJ);
+  if (result) {
+    cityName = result.displayName;
+    country = result.country;
   }
 
   closeMapPicker();
-  selectLocation(lat, lon, cityName || `${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E`, country);
+  selectLocation(wgs84.lat, wgs84.lon, cityName || `${latGCJ.toFixed(2)}°N, ${lonGCJ.toFixed(2)}°E`, country);
 }
 
 function closeMapPicker() {
   $mapModal.style.display = 'none';
-  // 不清除地图实例，下次复用（invalidateSize 刷新尺寸）
-  if (_mapMarker) { _mapInstance.removeLayer(_mapMarker); _mapMarker = null; }
+  $mapSearchResults.classList.remove('show');
+  $mapSearchInput.value = '';
+  if (_mapMarker && _mapInstance) { _mapInstance.remove(_mapMarker); _mapMarker = null; }
   _mapLat = null; _mapLon = null;
 }
 
-// === 搜索 ===
-async function searchCity() {
-  const q = $cityInput.value.trim();
-  if (!q) return;
-  $searchResults.innerHTML = '<div class="result-item" style="color:var(--text-dim)">搜索中…</div>';
+// === 地图内搜索（高德 REST API — 比 JS API 插件更可靠）===
+async function mapSearch() {
+  const keyword = $mapSearchInput.value.trim();
+  if (!keyword) return;
+  $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--text-dim)">搜索中…</div>';
+  $mapSearchResults.classList.add('show');
   try {
-    const res = await fetch(`${GEO_URL}?name=${encodeURIComponent(q)}&count=6&language=zh&format=json`);
+    const res = await fetch(`${AMAP_SEARCH_URL}?key=${AMAP_KEY}&keywords=${encodeURIComponent(keyword)}&offset=10`);
     const data = await res.json();
-    if (!data.results || data.results.length === 0) {
-      $searchResults.innerHTML = '<div class="result-item" style="color:var(--text-dim)">未找到城市</div>';
+    if (data.status !== '1' || !data.pois || data.pois.length === 0) {
+      $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--text-dim)">未找到地点</div>';
       return;
     }
-    $searchResults.innerHTML = data.results.map((r, i) => {
-      const admin = [r.admin1, r.admin2].filter(Boolean).join(' · ');
+    $mapSearchResults.innerHTML = data.pois.map((p, i) => {
+      const [lng, lat] = p.location.split(',').map(Number);
+      const addr = p.address || '';
       return `<div class="result-item" data-idx="${i}">
-        <div class="result-name">${r.name}</div>
-        <div class="result-detail">${admin}  ${r.country || ''}  (${r.latitude.toFixed(2)}, ${r.longitude.toFixed(2)})</div>
+        <div class="result-name">${p.name}</div>
+        <div class="result-detail">${addr} · ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
       </div>`;
     }).join('');
-    $searchResults.querySelectorAll('.result-item').forEach(el => {
+    $mapSearchResults.querySelectorAll('.result-item').forEach(el => {
       el.addEventListener('click', () => {
-        const r = data.results[+el.dataset.idx];
-        selectLocation(r.latitude, r.longitude, r.name, r.country || '');
+        const p = data.pois[+el.dataset.idx];
+        const [lng, lat] = p.location.split(',').map(Number);
+        // 高德搜索结果已经是 GCJ-02
+        _mapLat = lat; _mapLon = lng;
+        if (_mapInstance) {
+          _mapInstance.setCenter([lng, lat]);
+          _mapInstance.setZoom(16);
+          placeMarker(lat, lng);
+          updateMapCoordsLabel();
+        }
+        $mapSearchResults.classList.remove('show');
+        $mapSearchInput.value = '';
       });
     });
   } catch(e) {
-    $searchResults.innerHTML = '<div class="result-item" style="color:var(--bad)">搜索失败</div>';
+    $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--bad)">搜索失败，请重试</div>';
   }
+}
+
+// === 高德逆地理编码（返回城市名+国家）===
+async function getAmapRegeo(lat, lon) {
+  try {
+    const res = await fetch(
+      `https://restapi.amap.com/v3/geocode/regeo?key=${AMAP_KEY}&location=${lon},${lat}&radius=1000&extensions=all`
+    );
+    const data = await res.json();
+    if (data.status === '1' && data.regeocode) {
+      const a = data.regeocode.addressComponent;
+      const city = a.city || a.province || '';
+      const district = a.district || '';
+      const displayName = district ? `${city}${district}` : city;
+      return { displayName: displayName || a.province || '', country: a.country || '' };
+    }
+  } catch(e) {
+    console.warn('高德逆地理编码失败', e.message);
+  }
+  return null;
 }
 
 // === 获取数据 ===

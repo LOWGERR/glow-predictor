@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>朝霞晚霞预测 · 摄影助手</title>
-<link rel="stylesheet" href="style.css?t=2">
+<link rel="stylesheet" href="style.css?t=5">
 </head>
 <body>
 <div class="app">
@@ -21,16 +21,12 @@
       <span class="loc-icon">📍</span>
       <span class="loc-name" id="locName">—</span>
     </div>
+    <!-- 位置操作按钮 -->
+    <div class="location-actions">
+      <button id="locateBtn">📍 获取当前位置</button>
+      <button id="mapPickBtn">🗺️ 在地图上选择位置</button>
+    </div>
   </header>
-
-  <!-- 搜索 -->
-  <div class="search-box">
-    <input type="text" id="cityInput" placeholder="搜索城市…" autocomplete="off">
-    <button id="searchBtn">🔍</button>
-    <button id="locateBtn">📍</button>
-  </div>
-  <div class="search-results" id="searchResults"></div>
-  <button class="map-pick-btn" id="mapPickBtn">🗺️ 在地图上选择位置</button>
 
   <!-- 加载 -->
   <div class="loading" id="loading" style="display:none">
@@ -118,16 +114,23 @@
 <!-- 地图选择器弹窗 -->
 <div class="map-modal" id="mapModal" style="display:none">
   <div class="map-header">
-    <button class="map-cancel-btn" id="mapCancelBtn">取消</button>
-    <span class="map-title">点击地图选择位置</span>
+    <button class="map-cancel-btn" id="mapCancelBtn">←</button>
+    <span class="map-title">在地图上选择位置</span>
     <button class="map-confirm-btn" id="mapConfirmBtn">确定</button>
   </div>
+  <div class="map-search-container">
+    <input type="text" id="mapSearchInput" placeholder="搜索城市或地标…" autocomplete="off">
+    <button id="mapSearchBtn">🔍</button>
+  </div>
+  <div class="map-search-results" id="mapSearchResults"></div>
   <div class="map-container" id="mapContainer"></div>
-  <div class="map-coords" id="mapCoords"></div>
+  <div class="map-footer">
+    <span class="map-coords" id="mapCoords">点击地图选择位置</span>
+    <button class="map-locate-btn" id="mapLocateBtn">📍 获取当前位置</button>
+  </div>
 </div>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://webapi.amap.com/maps?v=2.0&key=9a559408bacf3862588c08ad3a273edc"></script>
 <script src="glow.js"></script>
 </body>
 </html>
