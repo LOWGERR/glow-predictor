@@ -493,9 +493,20 @@ body {
   padding: 10px 14px;
   border-bottom: 1px solid #2a2a3e;
   cursor: pointer;
+  color: #e0e0e0;
 }
 .map-search-results .result-item:last-child { border-bottom: none; }
 .map-search-results .result-item:active { background: rgba(255,152,0,0.12); }
+.map-search-results .result-name {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #fff;
+}
+.map-search-results .result-detail {
+  font-size: 0.72rem;
+  color: #999;
+  margin-top: 2px;
+}
 
 .map-container {
   flex: 1;

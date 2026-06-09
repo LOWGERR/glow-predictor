@@ -85,15 +85,7 @@ function bindDOM() {
 
   // 附近搜索弹窗
   const $nClose = document.getElementById('nearbyClose');
-  const $nBtns = document.querySelectorAll('.nearby-cat-btn');
   if ($nClose) $nClose.addEventListener('click', closeNearbyModal);
-  $nBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      $nBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      searchNearbyPOI(btn.dataset.cat);
-    });
-  });
 }
 
 function tryGeoUpdate() {
@@ -399,35 +391,134 @@ function closeMapPicker() {
 // === 附近摄影点搜索（基于高德 POI 搜索）===
 let _nearbyType = '';
 
+const NEARBY_CATEGORIES = {
+  // key: { keywords, types, label, icon }
+  '景点': { keywords: '景点;公园;观景台', label: '📍 景点' },
+  '观景台': { keywords: '观景台;瞭望塔', label: '🏔️ 观景台' },
+  '公园': { keywords: '公园;广场', label: '🌳 公园' },
+  '湖泊': { keywords: '湖泊;水库;河畔', label: '💧 湖泊' },
+  '山顶': { keywords: '山;峰;山顶', label: '⛰️ 山顶' },
+};
+
+// 缓存每个分类是否有结果（避免反复请求）
+let _nearbyCache = {};
+
 function openNearbySearch(type) {
   _nearbyType = type || '';
+  _nearbyCache = {};
   document.getElementById('nearbyModal').style.display = 'flex';
-  searchNearbyPOI('景点');
+  // 清空分类按钮、清空结果，显示加载
+  renderNearbyCategories([]);
+  document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">🔍 搜索中…</div>';
+  // 依次查询所有分类
+  queryAllCategories();
 }
 
 function closeNearbyModal() {
   document.getElementById('nearbyModal').style.display = 'none';
 }
 
-async function searchNearbyPOI(category) {
-  if (!state.lat || !state.lon) {
-    document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">请先选择一个位置</div>';
+async function queryAllCategories() {
+  const catKeys = Object.keys(NEARBY_CATEGORIES);
+  const hasResults = {};
+  const allItems = {};
+
+  // 并行查询所有分类
+  const promises = catKeys.map(async (key) => {
+    try {
+      const items = await searchNearbyPOI(key);
+      if (items && items.length > 0) {
+        hasResults[key] = true;
+        allItems[key] = items;
+      } else {
+        hasResults[key] = false;
+        allItems[key] = [];
+      }
+    } catch(e) {
+      hasResults[key] = false;
+      allItems[key] = [];
+    }
+  });
+  await Promise.all(promises);
+
+  // 有结果的分类才显示按钮
+  const activeCats = catKeys.filter(k => hasResults[k]);
+  if (activeCats.length === 0) {
+    renderNearbyCategories([]);
+    document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">附近未找到摄影点，试试其他位置</div>';
     return;
   }
 
-  document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">🔍 搜索中…</div>';
+  renderNearbyCategories(activeCats);
+  // 默认显示第一个有结果的分类
+  const first = activeCats[0];
+  renderNearbyResults(first, allItems[first]);
+}
 
-  const keywords = {
-    '景点': '景点;公园;观景台',
-    '公园': '公园;广场',
-    '观景台': '观景台;瞭望塔',
-    '湖泊': '湖泊;水库;河畔',
-    '山顶': '山;峰;山顶',
-  };
-  const kw = keywords[category] || category;
-  const offset = _nearbyType === 'morning' ? 0.03 : -0.03; // 朝霞偏东, 晚霞偏西
+function renderNearbyCategories(activeCats) {
+  const container = document.getElementById('nearbyCategories');
+  if (activeCats.length === 0) {
+    container.innerHTML = '<span style="font-size:0.78rem;color:var(--text-dim);padding:6px 0">无可用分类</span>';
+    return;
+  }
+  container.innerHTML = activeCats.map((key, idx) =>
+    `<button class="nearby-cat-btn${idx === 0 ? ' active' : ''}" data-cat="${key}">${NEARBY_CATEGORIES[key].label}</button>`
+  ).join('');
 
-  // 先偏移（WGS-84），再转换到 GCJ-02（高德 REST API 要求火星坐标）
+  // 重新绑定点击事件
+  container.querySelectorAll('.nearby-cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('.nearby-cat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const cat = btn.dataset.cat;
+      if (_nearbyCache[cat]) {
+        renderNearbyResults(cat, _nearbyCache[cat]);
+      } else {
+        document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">🔍 搜索中…</div>';
+        searchNearbyPOI(cat).then(items => {
+          if (items && items.length > 0) {
+            _nearbyCache[cat] = items;
+            renderNearbyResults(cat, items);
+          } else {
+            document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">无结果</div>';
+          }
+        });
+      }
+    });
+  });
+}
+
+function renderNearbyResults(category, items) {
+  if (!items || items.length === 0) {
+    document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">未找到附近摄影点，试试其他分类</div>';
+    return;
+  }
+
+  document.getElementById('nearbyResults').innerHTML = items.map((p, i) => {
+    const safeName = p.name.replace(/'/g, "\\'");
+    return `
+      <div class="nearby-item" onclick="selectNearbyPOI(${p.lat}, ${p.lng}, '${safeName}')">
+        <span class="nearby-rank">${i+1}</span>
+        <div class="nearby-info">
+          <div class="nearby-name">${p.name} ${p.dirScore}</div>
+          <div class="nearby-detail">${p.dist}m · ${p.type || (category || '景点')}</div>
+        </div>
+        <button class="nearby-nav-btn" onclick="event.stopPropagation();navigateToPOI(${p.lat}, ${p.lng}, '${safeName}')" title="导航前往">🗺️</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function searchNearbyPOI(category) {
+  if (!state.lat || !state.lon) return [];
+
+  const catConfig = NEARBY_CATEGORIES[category];
+  if (!catConfig) return [];
+
+  const kw = catConfig.keywords || category;
+  const offset = _nearbyType === 'morning' ? 0.03 : -0.03;
+
+  // 先偏移（WGS-84），再转换到 GCJ-02
   const offsetLon = state.lon + offset * 0.8;
   const gcj = wgs84ToGcj02(state.lat, offsetLon);
   const searchLon = gcj.lon;
@@ -435,13 +526,10 @@ async function searchNearbyPOI(category) {
 
   try {
     const res = await fetch(
-      `https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${searchLon},${searchLat}&radius=5000&keywords=${encodeURIComponent(kw)}&offset=15&page=1&extensions=base`
+      `https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${searchLon},${searchLat}&radius=10000&keywords=${encodeURIComponent(kw)}&offset=15&page=1&extensions=base`
     );
     const data = await res.json();
-    if (data.status !== '1' || !data.pois || data.pois.length === 0) {
-      document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">未找到附近摄影点，试试其他分类</div>';
-      return;
-    }
+    if (data.status !== '1' || !data.pois || data.pois.length === 0) return [];
 
     const seen = new Set();
     const items = data.pois
@@ -466,18 +554,11 @@ async function searchNearbyPOI(category) {
       })
       .slice(0, 10);
 
-    document.getElementById('nearbyResults').innerHTML = items.map((p, i) => `
-      <div class="nearby-item" onclick="selectNearbyPOI(${p.lat}, ${p.lng}, '${p.name.replace(/'/g, "\\'")}')">
-        <span class="nearby-rank">${i+1}</span>
-        <div class="nearby-info">
-          <div class="nearby-name">${p.name} ${p.dirScore}</div>
-          <div class="nearby-detail">${p.dist}m · ${p.type || '景点'}</div>
-        </div>
-        <button class="nearby-nav-btn" onclick="event.stopPropagation();navigateToPOI(${p.lat}, ${p.lng}, '${p.name.replace(/'/g, "\\'")}')" title="导航前往">🗺️</button>
-      </div>
-    `).join('');
+    // 写入缓存
+    _nearbyCache[category] = items;
+    return items;
   } catch(e) {
-    document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">❌ 搜索失败，请重试</div>';
+    return [];
   }
 }
 
