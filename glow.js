@@ -494,11 +494,6 @@ function renderNearbyCategories(activeCats) {
         });
       }
     });
-  });yId('nearbyResults').innerHTML = '<div class="nearby-empty">无结果</div>';
-          }
-        });
-      }
-    });
   });
 }
 
