@@ -395,12 +395,15 @@ let _nearbyType = '';
 
 // 不区分 morning/evening 时使用的默认偏移
 const NEARBY_CATEGORIES = {
-  // key: { keywords, types, label, icon }
-  '景点': { keywords: '景点;公园;观景台', label: '📍 景点' },
-  '观景台': { keywords: '观景台;瞭望塔;观景平台', label: '🏔️ 观景台' },
-  '公园': { keywords: '公园;广场;绿地', label: '🌳 公园' },
-  '湖泊': { keywords: '湖泊;水库;河畔;湿地', label: '💧 湖泊' },
-  '山顶': { keywords: '山;峰;山顶;制高点', label: '⛰️ 山顶' },
+  // 每个分类只用单个关键词（避免高德API分号OR的不可靠行为）
+  '景点': { keywords: '景点', label: '📍 景点' },
+  '公园': { keywords: '公园', label: '🌳 公园' },
+  '广场': { keywords: '广场', label: '🏛️ 广场' },
+  '观景台': { keywords: '观景台', label: '🏔️ 观景台' },
+  '桥': { keywords: '桥', label: '🌉 桥' },
+  '寺庙': { keywords: '寺庙', label: '⛩️ 寺庙' },
+  '湖泊': { keywords: '水库', label: '💧 湖泊/水库' },
+  '文创': { keywords: '文创', label: '🎨 文创' },
 };
 
 // 缓存每个分类是否有结果（避免反复请求）
@@ -410,6 +413,7 @@ function openNearbySearch(type) {
   _nearbyType = type || '';
   _nearbyCache = {};
   document.getElementById('nearbyModal').style.display = 'flex';
+  document.body.classList.add('no-scroll');
   const resultsEl = document.getElementById('nearbyResults');
   resultsEl.innerHTML = '<div class="nearby-empty">🔍 搜索中…</div>';
   // 并行查询所有分类
@@ -418,6 +422,7 @@ function openNearbySearch(type) {
 
 function closeNearbyModal() {
   document.getElementById('nearbyModal').style.display = 'none';
+  document.body.classList.remove('no-scroll');
 }
 
 async function queryAllCategories() {
