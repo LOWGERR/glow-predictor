@@ -427,14 +427,15 @@ async function searchNearbyPOI(category) {
   const kw = keywords[category] || category;
   const offset = _nearbyType === 'morning' ? 0.03 : -0.03; // 朝霞偏东, 晚霞偏西
 
-  // WGS-84 → GCJ-02（高德 REST API 要求火星坐标）
-  const gcj = wgs84ToGcj02(state.lat, state.lon + offset * 0.8);
+  // 先偏移（WGS-84），再转换到 GCJ-02（高德 REST API 要求火星坐标）
+  const offsetLon = state.lon + offset * 0.8;
+  const gcj = wgs84ToGcj02(state.lat, offsetLon);
   const searchLon = gcj.lon;
   const searchLat = gcj.lat;
 
   try {
     const res = await fetch(
-      `https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${searchLon},${state.lat}&radius=5000&keywords=${encodeURIComponent(kw)}&offset=15&page=1&extensions=base`
+      `https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${searchLon},${searchLat}&radius=5000&keywords=${encodeURIComponent(kw)}&offset=15&page=1&extensions=base`
     );
     const data = await res.json();
     if (data.status !== '1' || !data.pois || data.pois.length === 0) {
