@@ -98,11 +98,14 @@
   <div class="legend">
     <h3>📊 评分参考</h3>
     <div class="legend-items">
-      <div class="legend-item"><span class="dot" style="background:#ff4444"></span> 0-29 不推荐</div>
-      <div class="legend-item"><span class="dot" style="background:#ff9800"></span> 30-49 可关注</div>
-      <div class="legend-item"><span class="dot" style="background:#ffeb3b"></span> 50-69 值得出动</div>
-      <div class="legend-item"><span class="dot" style="background:#4caf50"></span> 70-89 强烈推荐</div>
-      <div class="legend-item"><span class="dot" style="background:#e040fb"></span> 90+ 必出大片</div>
+      <div class="legend-item"><span class="dot" style="background:#e040fb"></span> 概率高 / 质量绚丽</div>
+      <div class="legend-item"><span class="dot" style="background:#4caf50"></span> 概率/质量 较好</div>
+      <div class="legend-item"><span class="dot" style="background:#ffeb3b"></span> 值得期待</div>
+      <div class="legend-item"><span class="dot" style="background:#ff9800"></span> 有一定可能</div>
+      <div class="legend-item"><span class="dot" style="background:#ff4444"></span> 不太理想</div>
+    </div>
+    <div class="legend-trend" style="font-size:0.7rem;color:var(--text-dim);margin-top:6px">
+      📈 趋势图虚线 = 日出/日落时刻 · 总云量+中云+高云变化
     </div>
   </div>
 
@@ -131,6 +134,25 @@
 </div>
 
 <script src="https://webapi.amap.com/maps?v=2.0&key=9a559408bacf3862588c08ad3a273edc"></script>
-<script src="glow.js"></script>
+
+<!-- 附近摄影点搜索弹窗 -->
+<div class="nearby-modal" id="nearbyModal" style="display:none">
+  <div class="nearby-header">
+    <span>📷 附近摄影点</span>
+    <button id="nearbyClose" class="nearby-close-btn">✕</button>
+  </div>
+  <div class="nearby-categories">
+    <button class="nearby-cat-btn active" data-cat="景点">📍 景点</button>
+    <button class="nearby-cat-btn" data-cat="公园">🌳 公园</button>
+    <button class="nearby-cat-btn" data-cat="观景台">🏔️ 观景台</button>
+    <button class="nearby-cat-btn" data-cat="湖泊">💧 湖泊</button>
+    <button class="nearby-cat-btn" data-cat="山顶">⛰️ 山顶</button>
+  </div>
+  <div class="nearby-results" id="nearbyResults">
+    <div class="nearby-empty">加载中…</div>
+  </div>
+</div>
+
+<script src="glow.js?v=6"></script>
 </body>
 </html>

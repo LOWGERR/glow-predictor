@@ -82,18 +82,6 @@ function bindDOM() {
   $mapLocateBtn.addEventListener('click', locateOnMap);
   $mapSearchBtn.addEventListener('click', mapSearch);
   $mapSearchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') mapSearch(); });
-
-  // 附近搜索弹窗
-  const $nClose = document.getElementById('nearbyClose');
-  const $nBtns = document.querySelectorAll('.nearby-cat-btn');
-  if ($nClose) $nClose.addEventListener('click', closeNearbyModal);
-  $nBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      $nBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      searchNearbyPOI(btn.dataset.cat);
-    });
-  });
 }
 
 function tryGeoUpdate() {
@@ -180,20 +168,7 @@ function _transformLon(x, y) {
   return ret;
 }
 
-// WGS-84 → GCJ-02（同步版，不依赖 AMap JS API，用于 REST API 调用）
-function wgs84ToGcj02(lat, lon) {
-  const dlat = _transformLat(lon - 105.0, lat - 35.0);
-  const dlon = _transformLon(lon - 105.0, lat - 35.0);
-  const radLat = lat / 180.0 * Math.PI;
-  let magic = Math.sin(radLat);
-  magic = 1 - 0.00669342162296594323 * magic * magic;
-  const sqrtMagic = Math.sqrt(magic);
-  const gcjLat = lat + (dlat * 180.0) / ((6378245.0 * (1 - 0.00669342162296594323)) / (magic * sqrtMagic) * Math.PI);
-  const gcjLon = lon + (dlon * 180.0) / ((6378245.0 / sqrtMagic) * Math.cos(radLat) * Math.PI);
-  return { lat: gcjLat, lon: gcjLon };
-}
-
-// WGS-84 ? GCJ-02（高德地图专用，使用 AMap JS API 或回退本地算法）
+// WGS-84 ? GCJ-02（高德地图专用）
 function convertWGS84toGCJ02(lat, lon) {
   return new Promise((resolve) => {
     AMap.convertFrom([lon, lat], 'gps', (status, result) => {
@@ -202,7 +177,13 @@ function convertWGS84toGCJ02(lat, lon) {
         resolve({ lat: l.getLat(), lon: l.getLng() });
       } else {
         // API 失效时使用本地算法
-        resolve(wgs84ToGcj02(lat, lon));
+        const dlat = _transformLat(lon - 105.0, lat - 35.0);
+        const dlon = _transformLon(lon - 105.0, lat - 35.0);
+        const radLat = lat / 180.0 * Math.PI;
+        let magic = Math.sin(radLat);
+        magic = 1 - 0.00669342162296594323 * magic * magic;
+        const sqrtMagic = Math.sqrt(magic);
+        resolve({ lat: lat + (dlat * 180.0) / ((6378245.0 * (1 - 0.00669342162296594323)) / (magic * sqrtMagic) * Math.PI), lon: lon + (dlon * 180.0) / ((6378245.0 / sqrtMagic) * Math.cos(radLat) * Math.PI) });
       }
     });
   });
@@ -394,169 +375,6 @@ function closeMapPicker() {
   $mapSearchInput.value = '';
   if (_mapMarker && _mapInstance) { _mapInstance.remove(_mapMarker); _mapMarker = null; }
   _mapLat = null; _mapLon = null;
-}
-
-// === 附近摄影点搜索（基于高德 POI 搜索）===
-let _nearbyType = '';
-
-function openNearbySearch(type) {
-  _nearbyType = type || '';
-  document.getElementById('nearbyModal').style.display = 'flex';
-  searchNearbyPOI('景点');
-}
-
-function closeNearbyModal() {
-  document.getElementById('nearbyModal').style.display = 'none';
-}
-
-async function searchNearbyPOI(category) {
-  if (!state.lat || !state.lon) {
-    document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">请先选择一个位置</div>';
-    return;
-  }
-
-  document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">🔍 搜索中…</div>';
-
-  const keywords = {
-    '景点': '景点;公园;观景台',
-    '公园': '公园;广场',
-    '观景台': '观景台;瞭望塔',
-    '湖泊': '湖泊;水库;河畔',
-    '山顶': '山;峰;山顶',
-  };
-  const kw = keywords[category] || category;
-  const offset = _nearbyType === 'morning' ? 0.03 : -0.03; // 朝霞偏东, 晚霞偏西
-
-  // WGS-84 → GCJ-02（高德 REST API 要求火星坐标）
-  const gcj = wgs84ToGcj02(state.lat, state.lon + offset * 0.8);
-  const searchLon = gcj.lon;
-  const searchLat = gcj.lat;
-
-  try {
-    const res = await fetch(
-      `https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${searchLon},${state.lat}&radius=5000&keywords=${encodeURIComponent(kw)}&offset=15&page=1&extensions=base`
-    );
-    const data = await res.json();
-    if (data.status !== '1' || !data.pois || data.pois.length === 0) {
-      document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">未找到附近摄影点，试试其他分类</div>';
-      return;
-    }
-
-    const seen = new Set();
-    const items = data.pois
-      .filter(p => {
-        const key = p.name + p.location;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map(p => {
-        const [lng, lat] = p.location.split(',').map(Number);
-        const dist = Math.round(distance(state.lat, state.lon, lat, lng));
-        const dir = bearing(state.lat, state.lon, lat, lng);
-        const sunDir = _nearbyType === 'morning' ? 90 : 270;
-        const dirScore = Math.abs(dir - sunDir) <= 45 ? '⭐' : '';
-        return { ...p, lat, lng, dist, dir, dirScore };
-      })
-      .sort((a, b) => {
-        if (a.dirScore && !b.dirScore) return -1;
-        if (!a.dirScore && b.dirScore) return 1;
-        return a.dist - b.dist;
-      })
-      .slice(0, 10);
-
-    document.getElementById('nearbyResults').innerHTML = items.map((p, i) => `
-      <div class="nearby-item" onclick="selectNearbyPOI(${p.lat}, ${p.lng}, '${p.name.replace(/'/g, "\\'")}')">
-        <span class="nearby-rank">${i+1}</span>
-        <div class="nearby-info">
-          <div class="nearby-name">${p.name} ${p.dirScore}</div>
-          <div class="nearby-detail">${p.dist}m · ${p.type || '景点'}</div>
-        </div>
-        <button class="nearby-nav-btn" onclick="event.stopPropagation();navigateToPOI(${p.lat}, ${p.lng}, '${p.name.replace(/'/g, "\\'")}')" title="导航前往">🗺️</button>
-      </div>
-    `).join('');
-  } catch(e) {
-    document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">❌ 搜索失败，请重试</div>';
-  }
-}
-
-function selectNearbyPOI(lat, lng, name) {
-  selectLocation(lat, lng, name, '');
-  closeNearbyModal();
-  // 在地图选择器上标记该点
-  showNearbyPOIOnMap(lat, lng, name);
-}
-
-// 附近摄影点 → 地图标记展示
-function showNearbyPOIOnMap(lat, lng, name) {
-  // 先打开地图选择器
-  $mapModal.style.display = 'flex';
-  $mapCoords.textContent = `📸 ${name}`;
-  $mapConfirmBtn.textContent = '确定';
-  $mapConfirmBtn.disabled = false;
-  setTimeout(() => {
-    if (typeof AMap === 'undefined') return;
-
-    // 初始化地图实例（如果还没有）
-    if (!_mapInstance) {
-      _mapInstance = new AMap.Map('mapContainer', {
-        center: [lng, lat],
-        zoom: 16,
-        mapStyle: 'amap://styles/light',
-        zoomEnable: true,
-        dragEnable: true,
-        resizeEnable: true,
-        features: ['bg', 'road', 'building', 'point'],
-        showIndoorMap: false
-      });
-      _mapInstance.on('click', (e) => {
-        _mapLat = e.lnglat.getLat();
-        _mapLon = e.lnglat.getLng();
-        placeMarker(_mapLat, _mapLon);
-        updateMapCoordsLabel();
-      });
-    } else {
-      _mapInstance.setCenter([lng, lat]);
-      _mapInstance.setZoom(16);
-      if (_mapMarker) { _mapInstance.remove(_mapMarker); _mapMarker = null; }
-    }
-
-    _mapLat = lat; _mapLon = lng;
-    placeMarker(lat, lng);
-    // 加信息窗口
-    const info = new AMap.InfoWindow({
-      content: `<div style="font-size:14px;color:#333;padding:4px 8px">📸 ${name}<br><span onclick="navigateToPOI(${lat},${lng},'${name.replace(/'/g, "\\'")}')" style="font-size:12px;color:#1677ff;text-decoration:none;cursor:pointer">🗺️ 导航前往</span></div>`,
-      offset: new AMap.Pixel(0, -30)
-    });
-    info.open(_mapInstance, [lng, lat]);
-    updateMapCoordsLabel();
-  }, 300);
-}
-
-// 一键导航到指定 POI（打开高德地图 app / 网页）
-function navigateToPOI(lat, lng, name) {
-  // 先转换 WGS-84 → GCJ-02（高德坐标）
-  const gcj = wgs84ToGcj02(lat, lng);
-  const url = `https://uri.amap.com/navigation?to=${gcj.lon},${gcj.lat},${encodeURIComponent(name)}&mode=car&coordinate=gaode`;
-  window.location.href = url;
-}
-
-function distance(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const toRad = d => d * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-function bearing(lat1, lon1, lat2, lon2) {
-  const toRad = d => d * Math.PI / 180;
-  const toDeg = r => r * 180 / Math.PI;
-  const dLon = toRad(lon2 - lon1);
-  const y = Math.sin(dLon) * Math.cos(toRad(lat2));
-  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
 // === 地图内搜索（高德 REST API — 比 JS API 插件更可靠）===
@@ -776,27 +594,21 @@ function renderTabPredictions(data) {
   const sunriseISO = daily.sunrise[di];
   const sunsetISO = daily.sunset[di];
 
-  // 朝霞：最接近日出时刻的逐时数据
+  // 朝霞：日落前1小时左右的逐时数据
   const sr = new Date(sunriseISO);
-  const srHour = sr.getHours() + sr.getMinutes() / 60;
-  let morningIdx = hourlyIndices[0];
-  let minDiff = Infinity;
-  hourlyIndices.forEach(i => {
-    const h = new Date(data.hourly.time[i]).getHours() + new Date(data.hourly.time[i]).getMinutes() / 60;
-    const diff = Math.abs(h - srHour);
-    if (diff < minDiff) { minDiff = diff; morningIdx = i; }
-  });
+  const srHour = sr.getHours();
+  const morningIdx = hourlyIndices.find(i => {
+    const h = new Date(data.hourly.time[i]).getHours();
+    return h >= srHour - 1 && h <= srHour + 1;
+  }) || hourlyIndices[0];
 
-  // 晚霞：最接近日落时刻的逐时数据
+  // 晚霞：日落前1小时左右的逐时数据
   const ss = new Date(sunsetISO);
-  const ssHour = ss.getHours() + ss.getMinutes() / 60;
-  let eveningIdx = hourlyIndices[Math.min(hourlyIndices.length - 1, 18)];
-  let minDiffE = Infinity;
-  hourlyIndices.forEach(i => {
-    const h = new Date(data.hourly.time[i]).getHours() + new Date(data.hourly.time[i]).getMinutes() / 60;
-    const diff = Math.abs(h - ssHour);
-    if (diff < minDiffE) { minDiffE = diff; eveningIdx = i; }
-  });
+  const ssHour = ss.getHours();
+  const eveningIdx = hourlyIndices.find(i => {
+    const h = new Date(data.hourly.time[i]).getHours();
+    return h >= ssHour - 1 && h <= ssHour + 1;
+  }) || hourlyIndices[Math.min(hourlyIndices.length - 1, 17)];
 
   const morningData = extractHourlyData(data, morningIdx);
   const eveningData = extractHourlyData(data, eveningIdx);
@@ -811,14 +623,11 @@ function renderTabPredictions(data) {
   const morningTips = buildTips(morningData, 'morning');
   const eveningTips = buildTips(eveningData, 'evening');
 
-  const morningChart = buildCloudTrendChart(data, di, 'morning');
-  const eveningChart = buildCloudTrendChart(data, di, 'evening');
-
   const dateLabel = formatTabDate(dateStr);
 
   $predictions.innerHTML =
-    buildPredictionCard('🌄 朝霞预测', 'morning', morningScore, morningProb, morningQuality, morningData, morningTips, sunriseISO, dateLabel, morningChart) +
-    buildPredictionCard('🌇 晚霞预测', 'evening', eveningScore, eveningProb, eveningQuality, eveningData, eveningTips, sunsetISO, dateLabel, eveningChart);
+    buildPredictionCard('🌄 朝霞预测', 'morning', morningScore, morningProb, morningQuality, morningData, morningTips, sunriseISO, dateLabel) +
+    buildPredictionCard('🌇 晚霞预测', 'evening', eveningScore, eveningProb, eveningQuality, eveningData, eveningTips, sunsetISO, dateLabel);
 }
 
 function extractHourlyData(data, idx) {
@@ -898,120 +707,6 @@ function calcQuality(d, type) {
   return Math.max(0, Math.min(100, Math.round(quality)));
 }
 
-// === 云层趋势图：SVG 折线图，显示日出/日落前后 ±2h 的云量趋势 ===
-// data: 完整 forecast data object, di: day index, type: 'morning'|'evening'
-function buildCloudTrendChart(data, di, type) {
-  const daily = data.daily;
-  const hourly = data.hourly;
-  const dateStr = daily.time[di];
-  if (!dateStr) return '';
-
-  // 找到日出/日落时间的小时
-  const eventISO = type === 'morning' ? daily.sunrise[di] : daily.sunset[di];
-  if (!eventISO) return '';
-  const eventDate = new Date(eventISO);
-  const eventHour = eventDate.getHours();
-
-  // 取该日期所有逐时索引
-  const indices = hourly.time
-    .map((t, i) => ({ i, h: new Date(t).getHours() }))
-    .filter(x => hourly.time[x.i].startsWith(dateStr));
-
-  // 找到 ±2h 窗口（共 5 个点）
-  const windowStart = eventHour - 2;
-  const windowEnd = eventHour + 2;
-  const windowIndices = indices
-    .filter(x => x.h >= windowStart && x.h <= windowEnd)
-    .sort((a, b) => a.h - b.h);
-
-  if (windowIndices.length < 2) return '';
-
-  // 提取数据系列
-  const series = [
-    { key: 'cloud_cover', label: '总云量', color: '#8888cc' },
-    { key: 'cloud_cover_mid', label: '中云', color: '#ff9800' },
-    { key: 'cloud_cover_high', label: '高云', color: '#e040fb' },
-  ];
-
-  // 找到数据范围（留边距）
-  let minVal = 0, maxVal = 100;
-
-  const W = 240, H = 60, PAD = { top: 6, bottom: 14, left: 26, right: 10 };
-  const plotW = W - PAD.left - PAD.right;
-  const plotH = H - PAD.top - PAD.bottom;
-
-  const xScale = (idx) => PAD.left + (idx / (windowIndices.length - 1)) * plotW;
-  const yScale = (v) => PAD.top + plotH - ((v - minVal) / (maxVal - minVal)) * plotH;
-
-  // 构建 SVG path
-  let paths = '';
-  series.forEach(s => {
-    const pts = windowIndices.map((wi, idx) => {
-      const v = hourly[s.key][wi.i] ?? 50;
-      return `${xScale(idx)},${yScale(v)}`;
-    });
-    const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p).join(' ');
-    // 渐变填充
-    const fillId = `fill_${s.key.replace(/_/g,'')}`;
-    paths += `<defs><linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${s.color}" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="${s.color}" stop-opacity="0.02"/>
-    </linearGradient></defs>`;
-    // 填充区域（从底部到 line）
-    const bottomY = yScale(0);
-    const fillD = `M${pts[0].split(',')[0]},${bottomY} L${pts.map(p => p).join(' L')} L${pts[pts.length-1].split(',')[0]},${bottomY} Z`;
-    paths += `<path d="${fillD}" fill="url(#${fillId})" />`;
-    paths += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>`;
-    // 数据点
-    pts.forEach((p, i) => {
-      const [px, py] = p.split(',').map(Number);
-      paths += `<circle cx="${px}" cy="${py}" r="1.8" fill="${s.color}" opacity="0.9"/>`;
-    });
-  });
-
-  // X 轴标签
-  let xLabels = '';
-  windowIndices.forEach((wi, idx) => {
-    const label = `${wi.h}:00`;
-    const x = xScale(idx);
-    xLabels += `<text x="${x}" y="${H - 2}" text-anchor="middle" font-size="7" fill="#666">${label}</text>`;
-  });
-
-  // Y 轴标签
-  const yTicks = [0, 25, 50, 75, 100];
-  let yLabels = '';
-  yTicks.forEach(v => {
-    const y = yScale(v);
-    yLabels += `<text x="${PAD.left - 3}" y="${y + 2.5}" text-anchor="end" font-size="6.5" fill="#555">${v}</text>`;
-    yLabels += `<line x1="${PAD.left}" y1="${y}" x2="${W - PAD.right}" y2="${y}" stroke="#222" stroke-width="0.5" stroke-dasharray="2,2" opacity="0.4"/>`;
-  });
-
-  // 事件垂直线（日出/日落时刻）
-  const eventIdx = windowIndices.findIndex(wi => wi.h === eventHour);
-  if (eventIdx >= 0) {
-    const ex = xScale(eventIdx);
-    paths += `<line x1="${ex}" y1="${PAD.top}" x2="${ex}" y2="${H - PAD.bottom}" stroke="#ff6" stroke-width="1" stroke-dasharray="3,2" opacity="0.8"/>`;
-    paths += `<text x="${ex}" y="${PAD.top - 1}" text-anchor="middle" font-size="6.5" fill="#ff6" opacity="0.9">${type === 'morning' ? '🌅' : '🌇'}</text>`;
-  }
-
-  // 图例
-  let legend = '';
-  series.forEach((s, i) => {
-    const lx = PAD.left + i * 58;
-    legend += `<line x1="${lx}" y1="${H + 10}" x2="${lx + 10}" y2="${H + 10}" stroke="${s.color}" stroke-width="2"/>`;
-    legend += `<text x="${lx + 13}" y="${H + 13.5}" font-size="6.5" fill="#999">${s.label}</text>`;
-  });
-
-  return `<div class="chart-container">
-    <svg width="${W}" height="${H + 26}" viewBox="0 0 ${W} ${H + 26}" style="display:block;margin:0 auto;max-width:100%">
-      ${yLabels}
-      ${paths}
-      ${xLabels}
-      ${legend}
-    </svg>
-  </div>`;
-}
-
 // 综合评分（保留向后兼容）
 function calcScore(d, type) {
   const prob = calcProbability(d, type);
@@ -1059,8 +754,8 @@ function buildTips(d, type) {
   return tips.join('<br>');
 }
 
-// === 构建预测卡片（莉景风格：概率 + 质量双指标 + 云层趋势图）===
-function buildPredictionCard(label, type, score, prob, quality, data, tips, timeISO, dateLabel, chartSvg) {
+// === 构建预测卡片（莉景风格：概率 + 质量双指标）===
+function buildPredictionCard(label, type, score, prob, quality, data, tips, timeISO, dateLabel) {
   const typeCls = type === 'morning' ? 'morning' : 'evening';
   const timeStr = new Date(timeISO).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   // 时间区间：日出/日落 ±30 分钟
@@ -1149,8 +844,6 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
         `).join('')}
       </div>
       ${tips ? `<div class="card-tips">${tips}</div>` : ''}
-      ${chartSvg ? `<div class="card-section-label">📈 云层趋势</div>${chartSvg}` : ''}
-      <button class="nearby-btn" onclick="openNearbySearch('${type}')">📷 附近摄影点</button>
       <div class="data-source">🌐 欧洲中期天气预报中心 (ECMWF IFS)</div>
     </div>
   </div>`;
