@@ -87,11 +87,7 @@ function bindDOM() {
   const $nClose = document.getElementById('nearbyClose');
   if ($nClose) $nClose.addEventListener('click', closeNearbyModal);
 
-  // 附近自定义关键词搜索
-  const $nCustomBtn = document.getElementById('nearbyCustomBtn');
-  const $nCustomInput = document.getElementById('nearbyCustomInput');
-  if ($nCustomBtn) $nCustomBtn.addEventListener('click', nearbyCustomSearch);
-  if ($nCustomInput) $nCustomInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nearbyCustomSearch(); });
+
 }
 
 function tryGeoUpdate() {
@@ -429,8 +425,8 @@ async function queryAllCategories() {
   const hasResults = {};
   const allItems = {};
 
-  // 并行查询所有分类
-  const promises = catKeys.map(async (key) => {
+  // 串行查询每个分类，避免高德 API 并发限流
+  for (const key of catKeys) {
     try {
       const items = await searchNearbyPOI(key);
       const cacheKey = `${_nearbyType}_${key}`;
@@ -446,8 +442,7 @@ async function queryAllCategories() {
       hasResults[key] = false;
       allItems[key] = [];
     }
-  });
-  await Promise.all(promises);
+  }
 
   // 有结果的分类才显示按钮
   const activeCats = catKeys.filter(k => hasResults[k]);
@@ -631,65 +626,6 @@ function navigateToPOI(lat, lng, name) {
 }
 
 // 附近搜索：自定义关键词（用户输入）
-async function nearbyCustomSearch() {
-  const input = document.getElementById('nearbyCustomInput');
-  const keyword = (input.value || '').trim();
-  if (!keyword) return;
-
-  if (!state.lat || !state.lon) {
-    document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">⚠️ 请先选择位置</div>';
-    return;
-  }
-
-  document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">🔍 搜索 ' + keyword + '…</div>';
-  // 取消所有分类的高亮
-  document.querySelectorAll('#nearbyCategories .nearby-cat-btn').forEach(b => b.classList.remove('active'));
-
-  try {
-    const gcj = wgs84ToGcj02(state.lat, state.lon);
-    const res = await fetch(
-      `https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${gcj.lon},${gcj.lat}&radius=10000&keywords=${encodeURIComponent(keyword)}&offset=20&page=1&extensions=base`
-    );
-    const data = await res.json();
-    if (data.status !== '1' || !data.pois || data.pois.length === 0) {
-      document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">附近未找到「' + keyword + '」相关地点</div>';
-      return;
-    }
-
-    const seen = new Set();
-    const items = data.pois
-      .filter(p => {
-        const key = p.name + p.location;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map(p => {
-        const [lng, lat] = p.location.split(',').map(Number);
-        const dist = Math.round(distance(state.lat, state.lon, lat, lng));
-        return { ...p, lat, lng, dist };
-      })
-      .sort((a, b) => a.dist - b.dist)
-      .slice(0, 20);
-
-    document.getElementById('nearbyResults').innerHTML = items.map((p, i) => {
-      const safeName = p.name.replace(/'/g, "\\'");
-      return `
-        <div class="nearby-item" onclick="selectNearbyPOI(${p.lat}, ${p.lng}, '${safeName}')">
-          <span class="nearby-rank">${i+1}</span>
-          <div class="nearby-info">
-            <div class="nearby-name">${p.name}</div>
-            <div class="nearby-detail">${p.dist}m</div>
-          </div>
-          <button class="nearby-nav-btn" onclick="event.stopPropagation();navigateToPOI(${p.lat}, ${p.lng}, '${safeName}')" title="导航前往">🗺️</button>
-        </div>
-      `;
-    }).join('');
-  } catch(e) {
-    document.getElementById('nearbyResults').innerHTML = '<div class="nearby-empty">搜索失败，请重试</div>';
-  }
-}
-
 function distance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = d => d * Math.PI / 180;
