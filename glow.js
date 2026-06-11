@@ -1683,24 +1683,38 @@ function getTrendData(data, di, type) {
 function calcScore(d, type, trendData) {
   const prob = calcProbability(d, type, trendData);
   const quality = calcQuality(d, type);
-  // 基础综合分 = 概率 × 质量的加权几何平均（偏向低分，更严格）
-  const combined = Math.sqrt(prob * quality);
-  // 扩充到 0-250 量程（对应 sunsetbot 0.001-2.5 级别）
-  // 映射：0分 → 0, 50分 → 0.5, 100分 → 2.5
-  // 非线性拉伸：让中等分数对应"小烧"，高分段更有区分度
-  let score;
-  if (combined < 20) {
-    score = Math.round(combined * 0.3); // 0-20 → 0-6
-  } else if (combined < 50) {
-    score = Math.round(6 + (combined - 20) * 0.8); // 20-50 → 6-30
-  } else if (combined < 75) {
-    score = Math.round(30 + (combined - 50) * 2.0); // 50-75 → 30-80
-  } else if (combined < 90) {
-    score = Math.round(80 + (combined - 75) * 4.0); // 75-90 → 80-140
-  } else {
-    score = Math.round(140 + (combined - 90) * 11.0); // 90-100 → 140-250
+
+  // === 评分机制（0-100 分制）===
+  // 基础分：概率与质量的加权几何平均（偏向严格，避免虚高）
+  //   权重：概率 45% + 质量 55%（质量对最终出片影响更大）
+  const baseScore = Math.pow(prob, 0.45) * Math.pow(quality, 0.55);
+
+  // 趋势修正：云层变化方向对霞光持续性有显著影响
+  let trendBonus = 0;
+  if (trendData && trendData.cloudTrend != null) {
+    if (type === 'morning') {
+      // 朝霞：日出前云量适度下降预示通透
+      if (trendData.preEventTrend < -2 && trendData.preEventTrend > -12) trendBonus += 5;
+      // 日出后低云快速消散预示地平线清晰
+      if (trendData.lowCloudTrend < -4 && d.cloudLow < 35) trendBonus += 3;
+    } else {
+      // 晚霞：日落前云量稳定或缓慢增厚预示延续
+      if (Math.abs(trendData.preEventTrend) < 4) trendBonus += 4;
+      else if (trendData.preEventTrend > 0 && trendData.preEventTrend <= 6) trendBonus += 3;
+      // 高层云日落后继续增厚预示晚霞延长
+      if (trendData.highTrend > 1 && trendData.highTrend < 10) trendBonus += 3;
+    }
   }
-  return Math.max(0, Math.min(250, score));
+
+  // AOD 通透度额外加成（极致通透时小幅加分）
+  const aodProxy = _calcAODProxy(d.visibility, d.humidity, d.cloudLow);
+  if (aodProxy < 0.08 && Math.max(d.cloudMid, d.cloudHigh) >= 12) {
+    trendBonus += 2; // 极致通透 + 有云 = 最佳条件
+  }
+
+  // 综合得分 = 基础分 × 70% + 趋势修正 × 30%（上限 100）
+  let score = Math.round(baseScore * 0.7 + Math.min(trendBonus, 15) * (100 / 15) * 0.3);
+  return Math.max(0, Math.min(100, score));
 }
 
 // === 摄影建议 ===
@@ -1786,23 +1800,23 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
   const timeRange = `${fmt(startTime)} - ${fmt(endTime)}`;
 
   function scoreColor(s) {
-    if (s >= 200) return '#ff1744';   // 大烧
-    if (s >= 150) return '#e040fb';   // 优质
-    if (s >= 100) return '#4caf50';   // 好
-    if (s >= 60) return '#ffeb3b';    // 一般
-    if (s >= 25) return '#ff9800';    // 偏差
-    return '#ff4444';                 // 差
+    if (s >= 85) return '#ff1744';   // 大烧
+    if (s >= 70) return '#e040fb';   // 优质
+    if (s >= 55) return '#4caf50';   // 好
+    if (s >= 35) return '#ffeb3b';   // 一般
+    if (s >= 15) return '#ff9800';   // 偏差
+    return '#ff4444';                // 差
   }
 
   const scoreColorMain = scoreColor(score);
 
   const verdictMap = [
-    { min: 200, text: '🔥 大烧 — 世纪朝/晚霞', emoji: '🔥' },
-    { min: 150, text: '✨ 优质朝/晚霞 — 强烈推荐出动', emoji: '✨' },
-    { min: 100, text: '🌟 好烧 — 值得期待', emoji: '🌟' },
-    { min: 60,  text: '👀 小到中烧 — 有一定可能', emoji: '👀' },
-    { min: 25,  text: '🤔 微烧 — 不太理想', emoji: '🤔' },
-    { min: 0,   text: '😴 无烧 — 建议休息', emoji: '😴' },
+    { min: 85, text: '🔥 大烧 — 世纪朝/晚霞', emoji: '🔥' },
+    { min: 70, text: '✨ 优质 — 强烈推荐出动', emoji: '✨' },
+    { min: 55, text: '🌟 好烧 — 值得期待', emoji: '🌟' },
+    { min: 35, text: '👀 小烧 — 有一定可能', emoji: '👀' },
+    { min: 15, text: '🤔 微烧 — 不太理想', emoji: '🤔' },
+    { min: 0,  text: '😴 无烧 — 建议休息', emoji: '😴' },
   ];
   const verdict = verdictMap.find(v => score >= v.min);
 
@@ -1862,7 +1876,7 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
           <div class="score-verdict" style="color:${scoreColorMain}">${verdict ? verdict.emoji + ' ' + verdict.text : '—'}</div>
           <div style="display:flex;align-items:baseline;gap:4px;margin-top:2px;">
             <span style="font-size:1.3rem;font-weight:800;color:${scoreColorMain}">${score}</span>
-            <span style="font-size:0.65rem;color:var(--text-dim);">/ 250</span>
+            <span style="font-size:0.65rem;color:var(--text-dim);">/ 100</span>
           </div>
           <div class="score-desc">${emoji} ${eventLabel}时段 ${timeRange}</div>
         </div>
