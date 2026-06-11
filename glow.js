@@ -20,6 +20,9 @@ const state = {
   forecastData: null,
   activeTab: 0,   // 0=今天, 1=明天, 2=后天
   countdownTimer: null,
+  // 多模型集成
+  ensembleData: null,     // 合并后的数据
+  modelSources: [],       // 成功请求的模型列表
 };
 
 // === 初始化 ===
@@ -720,33 +723,113 @@ async function fetchForecast() {
   $predictions.innerHTML = '';
   $weatherCard.style.display = 'none';
 
-  const params = new URLSearchParams({
+  // 多模型集成：同时请求 ECMWF IFS 和 GFS（美国全球预报系统）
+  // 云量预报是气象中最不稳定的变量，取多模型均值可显著降低单一模型偏差
+  const models = ['ecmwf_ifs', 'gfs_seamless'];
+  state.modelSources = [];
+
+  const baseParams = {
     latitude: state.lat,
     longitude: state.lon,
     hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,precipitation_probability,visibility,temperature_2m,weather_code',
     daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
     timezone: 'auto',
     forecast_days: 3,
-    models: 'ecmwf_ifs'
-  });
+  };
 
-  try {
+  const results = await Promise.allSettled(models.map(model => {
+    const params = new URLSearchParams({ ...baseParams, models: model });
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${FORECAST_URL}?${params}`, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    // 标记数据来源
-    data._source = data.meta && data.meta.models ? 'ECMWF' : 'Open-Meteo';
-    state.forecastData = data;
-    renderAll(data);
-  } catch(e) {
-    console.warn('API获取失败，使用演示数据', e.name, e.message);
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    return fetch(`${FORECAST_URL}?${params}`, { signal: controller.signal })
+      .then(r => { clearTimeout(timeout); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(d => { d._model = model; return d; })
+      .catch(e => { clearTimeout(timeout); throw e; });
+  }));
+
+  // 筛选成功返回的数据
+  const successData = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+
+  if (successData.length === 0) {
+    console.warn('所有模型均失败，使用演示数据');
     renderDemo();
-  } finally {
     $loading.style.display = 'none';
+    return;
   }
+
+  // 记录成功模型
+  state.modelSources = successData.map(d => d._model || 'unknown');
+
+  // 如果只有一个模型成功，直接使用
+  if (successData.length === 1) {
+    const data = successData[0];
+    data._source = data.meta && data.meta.models ? data.meta.models : data._model;
+    state.forecastData = data;
+    state.ensembleData = null;
+    renderAll(data);
+    $loading.style.display = 'none';
+    return;
+  }
+
+  // 多模型集成：取逐时云量数据的均值（其他字段用第一个模型的主数据）
+  // 注意：不同模型的逐时时间戳可能不完全对齐，Open-Meteo 统一返回 UTC 对齐的整点数据
+  const primary = successData[0];
+  const modelLabel = successData.map(d => d._model || d._source || '未知').join('+');
+
+  // 构建集成数据：云量字段取各模型均值
+  const cloudFields = ['cloud_cover', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high'];
+  const hourlyLen = primary.hourly.time.length;
+
+  for (let i = 0; i < hourlyLen; i++) {
+    cloudFields.forEach(field => {
+      let sum = 0, count = 0;
+      successData.forEach(d => {
+        if (d.hourly[field] && d.hourly[field][i] != null) {
+          sum += d.hourly[field][i];
+          count++;
+        }
+      });
+      if (count > 0) {
+        primary.hourly[field][i] = Math.round(sum / count);
+      }
+    });
+  }
+
+  // 降水概率也取均值（不同模型降水预报差异也很大）
+  for (let i = 0; i < hourlyLen; i++) {
+    let sum = 0, count = 0;
+    successData.forEach(d => {
+      if (d.hourly.precipitation_probability && d.hourly.precipitation_probability[i] != null) {
+        sum += d.hourly.precipitation_probability[i];
+        count++;
+      }
+    });
+    if (count > 0) {
+      primary.hourly.precipitation_probability[i] = Math.round(sum / count);
+    }
+  }
+
+  // daily 降水概率也取均值
+  if (primary.daily && primary.daily.precipitation_probability_max) {
+    for (let i = 0; i < primary.daily.time.length; i++) {
+      let sum = 0, count = 0;
+      successData.forEach(d => {
+        if (d.daily && d.daily.precipitation_probability_max && d.daily.precipitation_probability_max[i] != null) {
+          sum += d.daily.precipitation_probability_max[i];
+          count++;
+        }
+      });
+      if (count > 0) {
+        primary.daily.precipitation_probability_max[i] = Math.round(sum / count);
+      }
+    }
+  }
+
+  primary._source = modelLabel;
+  state.forecastData = primary;
+  state.ensembleData = successData; // 保留各模型原始数据供调试
+  renderAll(primary);
+  $loading.style.display = 'none';
 }
 
 // === 渲染全部 ===
@@ -891,12 +974,16 @@ function renderTabPredictions(data) {
   const morningData = extractHourlyData(data, morningIdx);
   const eveningData = extractHourlyData(data, eveningIdx);
 
-  const morningProb = calcProbability(morningData, 'morning');
+  // 趋势分析
+  const morningTrend = getTrendData(data, di, 'morning');
+  const eveningTrend = getTrendData(data, di, 'evening');
+
+  const morningProb = calcProbability(morningData, 'morning', morningTrend);
   const morningQuality = calcQuality(morningData, 'morning');
-  const morningScore = calcScore(morningData, 'morning');
-  const eveningProb = calcProbability(eveningData, 'evening');
+  const morningScore = calcScore(morningData, 'morning', morningTrend);
+  const eveningProb = calcProbability(eveningData, 'evening', eveningTrend);
   const eveningQuality = calcQuality(eveningData, 'evening');
-  const eveningScore = calcScore(eveningData, 'evening');
+  const eveningScore = calcScore(eveningData, 'evening', eveningTrend);
 
   const morningTips = buildTips(morningData, 'morning');
   const eveningTips = buildTips(eveningData, 'evening');
@@ -924,33 +1011,61 @@ function extractHourlyData(data, idx) {
   };
 }
 
-// === 评分算法（拆分版：概率 × 质量）===
+// === 评分算法 v3（多模型集成 + 趋势感知）===
 // 概率：霞光出现的可能性（%），主要看遮挡因素
 // 质量：霞光色彩壮观度（%），主要看散射条件
-function calcProbability(d, type) {
+function calcProbability(d, type, trendData) {
   let prob = 100;
 
-  // 中高层云：需要有云才能显色，但又不能太多遮住
-  const cloudMH = Math.max(d.cloudMid, d.cloudHigh);
-  if (cloudMH < 5)  prob -= 35; // 没云就几乎没有霞
-  else if (cloudMH < 15) prob -= 20;
-  else if (cloudMH < 25) prob -= 10;
-  else if (cloudMH <= 70) prob -= 0;
-  else if (cloudMH <= 85) prob -= 15;
-  else prob -= 30;
+  const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh;
+  const cloudMH = Math.max(cloudMid, cloudHigh);
 
-  // 低云：遮挡地平线
-  if (d.cloudLow > 60) prob -= 25;
-  else if (d.cloudLow > 35) prob -= 15;
-  else if (d.cloudLow > 15) prob -= 5;
+  // === 1. 中高层云评分（非线性曲线）===
+  // 0-5%: 没云几乎没霞；15-65%: 理想区间；>85%: 云太厚遮光
+  if (cloudMH < 5)  prob -= 35;
+  else if (cloudMH < 12) prob -= 22;
+  else if (cloudMH < 20) prob -= 8;
+  else if (cloudMH <= 65) prob -= 0;   // 理想区间
+  else if (cloudMH <= 80) prob -= 15;
+  else if (cloudMH <= 92) prob -= 28;
+  else prob -= 40;
 
-  // 降水：直接取消
-  if (d.precipProb > 60) prob -= 30;
-  else if (d.precipProb > 30) prob -= 15;
-  else if (d.precipProb > 10) prob -= 5;
+  // === 2. 中高云叠加奖励：如果中层和高层同时有云（>10%），额外加分 ===
+  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 70) {
+    prob += 10; // 多层云增加光线散射层次
+  }
 
-  // 总云量极端情况
+  // === 3. 低云评分（遮挡地平线）===
+  if (d.cloudLow > 70) prob -= 30;
+  else if (d.cloudLow > 45) prob -= 18;
+  else if (d.cloudLow > 25) prob -= 8;
+  else if (d.cloudLow > 12) prob -= 3;
+
+  // === 4. 降水概率 ===
+  if (d.precipProb > 70) prob -= 35;
+  else if (d.precipProb > 45) prob -= 20;
+  else if (d.precipProb > 20) prob -= 8;
+  else if (d.precipProb > 8) prob -= 3;
+
+  // === 5. 总云量极端情况 ===
   if (d.cloudCover > 95) prob -= 20;
+
+  // === 6. 趋势评分：云量变化方向 ===
+  if (trendData && trendData.cloudTrend) {
+    // 朝霞：日出前云量增多是好事（云正在聚集）
+    // 晚霞：日落前后云量稳定或略减是好事
+    if (type === 'morning') {
+      if (trendData.cloudTrend > 10) prob += 8;   // 云量在增多，好兆头
+      else if (trendData.cloudTrend < -15) prob -= 8; // 云量快速消散
+    } else {
+      if (Math.abs(trendData.cloudTrend) < 10) prob += 5; // 晚霞希望云量稳定
+      else if (trendData.cloudTrend < -20) prob -= 8; // 云量骤减，霞光消散快
+    }
+    // 低云也在消散？加分
+    if (trendData.lowCloudTrend !== undefined && trendData.lowCloudTrend < -5 && d.cloudLow < 30) {
+      prob += 5; // 低云正在散去，地平线更清晰
+    }
+  }
 
   return Math.max(0, Math.min(100, Math.round(prob)));
 }
@@ -958,32 +1073,54 @@ function calcProbability(d, type) {
 function calcQuality(d, type) {
   let quality = 100;
 
-  // 中高层云：色彩载体，30-60%最理想
-  const cloudMH = Math.max(d.cloudMid, d.cloudHigh);
-  if (cloudMH < 5)  quality -= 40;
-  else if (cloudMH < 15) quality -= 25;
-  else if (cloudMH < 25) quality -= 10;
-  else if (cloudMH >= 20 && cloudMH <= 60) quality += 5; // 奖励
-  else if (cloudMH <= 75) quality -= 5;
-  else if (cloudMH <= 85) quality -= 15;
-  else quality -= 30;
+  const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh;
+  const cloudMH = Math.max(cloudMid, cloudHigh);
 
-  // 低云：越少越好
-  if (d.cloudLow > 60) quality -= 25;
-  else if (d.cloudLow > 35) quality -= 15;
-  else if (d.cloudLow > 15) quality -= 5;
+  // === 1. 中高层云：色彩载体，非线性曲线 ===
+  if (cloudMH < 5)  quality -= 45;
+  else if (cloudMH < 12) quality -= 28;
+  else if (cloudMH < 20) quality -= 10;
+  else if (cloudMH >= 20 && cloudMH <= 55) quality += 8; // 最佳区间
+  else if (cloudMH <= 70) quality -= 3;
+  else if (cloudMH <= 82) quality -= 15;
+  else if (cloudMH <= 92) quality -= 30;
+  else quality -= 45;
 
-  // 湿度：40-70%最佳色彩饱和度
-  if (d.humidity < 25) quality -= 15; // 太干
-  else if (d.humidity > 85) quality -= 12;
-  else if (d.humidity > 75) quality -= 5;
-  else if (d.humidity >= 35 && d.humidity <= 65) quality += 5; // 奖励
+  // === 2. 中高云叠加奖励 ===
+  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 70) {
+    quality += 10; // 多层云：散射光线产生更丰富的色彩层次
+  }
 
-  // 能见度：影响色彩通透度
-  if (d.visibility < 2000) quality -= 25;
-  else if (d.visibility < 5000) quality -= 15;
-  else if (d.visibility < 8000) quality -= 5;
-  else quality += 5; // 通透奖励
+  // === 3. 低云 ===
+  if (d.cloudLow > 65) quality -= 28;
+  else if (d.cloudLow > 40) quality -= 16;
+  else if (d.cloudLow > 20) quality -= 6;
+  else if (d.cloudLow > 8) quality -= 2;
+
+  // === 4. 湿度：倒U曲线 — 30-65%最佳，太干没色、太湿浑浊 ===
+  const h = d.humidity;
+  if (h < 15) quality -= 20;     // 极端干燥
+  else if (h < 25) quality -= 12;
+  else if (h < 30) quality -= 5;
+  else if (h >= 35 && h <= 60) quality += 6; // 最佳色彩饱和度区间
+  else if (h <= 70) quality += 3;
+  else if (h <= 80) quality -= 3;
+  else if (h <= 88) quality -= 10;
+  else quality -= 20;            // 极端潮湿
+
+  // === 5. 能见度 ===
+  const v = d.visibility;
+  if (v < 1500) quality -= 30;
+  else if (v < 3000) quality -= 20;
+  else if (v < 5000) quality -= 10;
+  else if (v < 8000) quality -= 3;
+  else if (v >= 12000) quality += 6; // 通透奖励
+  else quality += 3;
+
+  // === 6. 湿度 × 能见度 联合惩罚 ===
+  // 高湿 + 低能见度 = 雾霾/雾，极大降低画质
+  if (h > 75 && v < 5000) quality -= 10;
+  if (h > 85 && v < 3000) quality -= 10;
 
   return Math.max(0, Math.min(100, Math.round(quality)));
 }
@@ -1102,11 +1239,104 @@ function buildCloudTrendChart(data, di, type) {
   </div>`;
 }
 
+// === 趋势分析：提取日出/日落前后云量变化趋势 ===
+// 返回 { cloudTrend, lowCloudTrend } — 正值表示云量在增多
+function getTrendData(data, di, type) {
+  const daily = data.daily;
+  const hourly = data.hourly;
+  const dateStr = daily.time[di];
+  if (!dateStr) return null;
+
+  const eventISO = type === 'morning' ? daily.sunrise[di] : daily.sunset[di];
+  if (!eventISO) return null;
+  const eventDate = new Date(eventISO);
+  const eventHour = eventDate.getHours();
+
+  // 找到该日期的所有逐时索引
+  const indices = hourly.time
+    .map((t, i) => ({ i, t }))
+    .filter(x => x.t.startsWith(dateStr))
+    .sort((a, b) => a.t.localeCompare(b.t));
+
+  if (indices.length < 3) return null;
+
+  // 朝霞：关注日出前 1.5h → 日出前 0.5h 的变化
+  // 晚霞：关注日落前 1.5h → 日落时刻的变化
+  let beforeWindow, afterWindow;
+  if (type === 'morning') {
+    beforeWindow = { start: eventHour - 1.5, end: eventHour - 0.5 };
+    // 也看日出前 → 日出后的变化（云是否持续增多）
+    afterWindow = { start: eventHour - 1, end: eventHour + 0.5 };
+  } else {
+    beforeWindow = { start: eventHour - 1.5, end: eventHour - 0.5 };
+    afterWindow = { start: eventHour - 1, end: eventHour + 0.5 };
+  }
+
+  // 提取窗口内的数据点
+  const windowData = indices.filter(x => {
+    const h = new Date(x.t).getHours() + new Date(x.t).getMinutes() / 60;
+    return h >= beforeWindow.start && h <= beforeWindow.end;
+  }).map(x => ({
+    cloudCover: hourly.cloud_cover[x.i],
+    cloudLow: hourly.cloud_cover_low[x.i],
+    cloudMid: hourly.cloud_cover_mid[x.i],
+    cloudHigh: hourly.cloud_cover_high[x.i],
+  }));
+
+  // 扩展窗口（含事件后）
+  const windowDataFull = indices.filter(x => {
+    const h = new Date(x.t).getHours() + new Date(x.t).getMinutes() / 60;
+    return h >= afterWindow.start && h <= afterWindow.end;
+  }).map(x => ({
+    cloudCover: hourly.cloud_cover[x.i],
+    cloudLow: hourly.cloud_cover_low[x.i],
+  }));
+
+  if (windowData.length < 2 && windowDataFull.length < 2) return null;
+
+  // 计算总云量变化趋势（按第一个和最后一个数据点之差）
+  let cloudTrend = 0;
+  if (windowData.length >= 2) {
+    const first = windowData[0].cloudCover;
+    const last = windowData[windowData.length - 1].cloudCover;
+    cloudTrend = last - first;
+  } else if (windowDataFull.length >= 2) {
+    const first = windowDataFull[0].cloudCover;
+    const last = windowDataFull[windowDataFull.length - 1].cloudCover;
+    cloudTrend = last - first;
+  }
+
+  // 低云变化趋势
+  let lowCloudTrend = 0;
+  if (windowData.length >= 2) {
+    const first = windowData[0].cloudLow;
+    const last = windowData[windowData.length - 1].cloudLow;
+    lowCloudTrend = last - first;
+  }
+
+  // 中高层云趋势（分别看）
+  let midTrend = 0, highTrend = 0;
+  if (windowData.length >= 2) {
+    midTrend = windowData[windowData.length - 1].cloudMid - windowData[0].cloudMid;
+    highTrend = windowData[windowData.length - 1].cloudHigh - windowData[0].cloudHigh;
+  }
+
+  return {
+    cloudTrend,
+    lowCloudTrend,
+    midTrend,
+    highTrend,
+    windowSize: windowData.length,
+  };
+}
+
 // 综合评分（保留向后兼容）
-function calcScore(d, type) {
-  const prob = calcProbability(d, type);
+function calcScore(d, type, trendData) {
+  const prob = calcProbability(d, type, trendData);
   const quality = calcQuality(d, type);
-  return Math.max(0, Math.min(100, Math.round((prob + quality) / 2)));
+  // 综合评分 = 概率 × 质量的加权几何平均（偏向低分，更严格）
+  const combined = Math.round(Math.sqrt(prob * quality));
+  return Math.max(0, Math.min(100, combined));
 }
 
 // === 摄影建议 ===
@@ -1150,6 +1380,19 @@ function buildTips(d, type) {
 }
 
 // === 构建预测卡片（莉景风格：概率 + 质量双指标 + 云层趋势图）===
+// === 生成数据来源标签 ===
+function getSourceLabel() {
+  const sources = state.modelSources;
+  if (!sources || sources.length === 0) return state.forecastData?._source || 'Open-Meteo';
+  const labelMap = {
+    'ecmwf_ifs': 'ECMWF IFS',
+    'gfs_seamless': 'GFS',
+  };
+  const names = sources.map(s => labelMap[s] || s);
+  if (names.length >= 2) return names.join(' + ') + ' (集成均值)';
+  return names[0] || 'Open-Meteo';
+}
+
 function buildPredictionCard(label, type, score, prob, quality, data, tips, timeISO, dateLabel, chartSvg) {
   const typeCls = type === 'morning' ? 'morning' : 'evening';
   const timeStr = new Date(timeISO).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
@@ -1241,7 +1484,7 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
       ${tips ? `<div class="card-tips">${tips}</div>` : ''}
       ${chartSvg ? `<div class="card-section-label">📈 云层趋势</div>${chartSvg}` : ''}
       <button class="nearby-btn" onclick="openNearbySearch('${type}')">📷 附近摄影点</button>
-      <div class="data-source">🌐 欧洲中期天气预报中心 (ECMWF IFS)</div>
+      <div class="data-source">🌐 多模型集成 (${getSourceLabel()})</div>
     </div>
   </div>`;
 }
