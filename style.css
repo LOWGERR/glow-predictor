@@ -332,7 +332,8 @@ body {
 .score-text { flex: 1; }
 .score-verdict {
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  line-height: 1.2;
 }
 .score-desc {
   font-size: 0.76rem;

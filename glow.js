@@ -1017,53 +1017,80 @@ function extractHourlyData(data, idx) {
 function calcProbability(d, type, trendData) {
   let prob = 100;
 
-  const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh;
+  const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh, cloudLow = d.cloudLow;
   const cloudMH = Math.max(cloudMid, cloudHigh);
+  const h = d.humidity;
+  const v = d.visibility;
 
-  // === 1. 中高层云评分（非线性曲线）===
-  // 0-5%: 没云几乎没霞；15-65%: 理想区间；>85%: 云太厚遮光
-  if (cloudMH < 5)  prob -= 35;
-  else if (cloudMH < 12) prob -= 22;
-  else if (cloudMH < 20) prob -= 8;
-  else if (cloudMH <= 65) prob -= 0;   // 理想区间
-  else if (cloudMH <= 80) prob -= 15;
-  else if (cloudMH <= 92) prob -= 28;
-  else prob -= 40;
+  // === 1. 中高层云评分（精细非线性曲线）===
+  if (cloudMH < 3)  prob -= 42;
+  else if (cloudMH < 8) prob -= 28;
+  else if (cloudMH < 14) prob -= 14;
+  else if (cloudMH >= 16 && cloudMH <= 62) prob -= 0;  // ★ 理想区间
+  else if (cloudMH <= 75) prob -= 3;
+  else if (cloudMH <= 85) prob -= 18;
+  else if (cloudMH <= 93) prob -= 32;
+  else prob -= 45;
 
-  // === 2. 中高云叠加奖励：如果中层和高层同时有云（>10%），额外加分 ===
-  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 70) {
-    prob += 10; // 多层云增加光线散射层次
+  // === 2. 中高云叠加奖励 ===
+  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 68) {
+    prob += 10;
   }
 
-  // === 3. 低云评分（遮挡地平线）===
-  if (d.cloudLow > 70) prob -= 30;
-  else if (d.cloudLow > 45) prob -= 18;
-  else if (d.cloudLow > 25) prob -= 8;
-  else if (d.cloudLow > 12) prob -= 3;
+  // === 3. 低云评分 + 遮挡中高层云的穿透惩罚（核心改进） ===
+  // 低云遮蔽地平线——直接影响能否看到霞光
+  if (cloudLow > 75) {
+    prob -= 35;
+    // 低云太厚 + 中高层也有云 → 中高层云被遮，实际上看不见霞
+    if (cloudMH > 15) prob -= 12;
+  } else if (cloudLow > 55) {
+    prob -= 22;
+    if (cloudMH > 20) prob -= 6;
+  } else if (cloudLow > 35) {
+    prob -= 10;
+  } else if (cloudLow > 18) {
+    prob -= 4;
+  } else {
+    prob += 3; // 低云少 → 地平线干净，加分
+  }
 
   // === 4. 降水概率 ===
-  if (d.precipProb > 70) prob -= 35;
-  else if (d.precipProb > 45) prob -= 20;
-  else if (d.precipProb > 20) prob -= 8;
-  else if (d.precipProb > 8) prob -= 3;
+  if (d.precipProb > 75) prob -= 40;
+  else if (d.precipProb > 55) prob -= 25;
+  else if (d.precipProb > 30) prob -= 12;
+  else if (d.precipProb > 12) prob -= 5;
+  else prob += 3; // 降水概率低 → 天气稳定
 
   // === 5. 总云量极端情况 ===
-  if (d.cloudCover > 95) prob -= 20;
+  if (d.cloudCover > 95) prob -= 25;
+  if (d.cloudCover < 5 && cloudMH < 5) prob -= 15; // 几乎无云
 
-  // === 6. 趋势评分：云量变化方向 ===
-  if (trendData && trendData.cloudTrend) {
-    // 朝霞：日出前云量增多是好事（云正在聚集）
-    // 晚霞：日落前后云量稳定或略减是好事
+  // === 6. 湿度极端惩罚 ===
+  // 过高湿度 → 云可能为低云/雾，降低霞出现的概率
+  if (h > 90) prob -= 15;
+  else if (h > 80) prob -= 6;
+
+  // === 7. 能见度极端惩罚 ===
+  if (v < 1500) prob -= 20;  // 浓雾 → 根本看不见
+  else if (v < 3000) prob -= 10;
+
+  // === 8. 趋势评分：云量变化方向 ===
+  if (trendData && trendData.cloudTrend != null) {
     if (type === 'morning') {
-      if (trendData.cloudTrend > 10) prob += 8;   // 云量在增多，好兆头
-      else if (trendData.cloudTrend < -15) prob -= 8; // 云量快速消散
+      // 朝霞：日出前云量增多是好事（云正在聚集）
+      if (trendData.cloudTrend > 12) prob += 10;
+      else if (trendData.cloudTrend > 6) prob += 5;
+      else if (trendData.cloudTrend < -18) prob -= 10;
+      else if (trendData.cloudTrend < -8) prob -= 4;
     } else {
-      if (Math.abs(trendData.cloudTrend) < 10) prob += 5; // 晚霞希望云量稳定
-      else if (trendData.cloudTrend < -20) prob -= 8; // 云量骤减，霞光消散快
+      // 晚霞：希望云量稳定或略减
+      if (Math.abs(trendData.cloudTrend) < 10) prob += 6;
+      else if (trendData.cloudTrend > 20) prob -= 6;  // 云越积越厚
+      else if (trendData.cloudTrend < -22) prob -= 10; // 云消散太快
     }
-    // 低云也在消散？加分
-    if (trendData.lowCloudTrend !== undefined && trendData.lowCloudTrend < -5 && d.cloudLow < 30) {
-      prob += 5; // 低云正在散去，地平线更清晰
+    // 低云消散趋势 → 加分
+    if (trendData.lowCloudTrend !== undefined && trendData.lowCloudTrend < -8 && cloudLow < 35) {
+      prob += 6;
     }
   }
 
@@ -1073,54 +1100,80 @@ function calcProbability(d, type, trendData) {
 function calcQuality(d, type) {
   let quality = 100;
 
-  const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh;
+  const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh, cloudLow = d.cloudLow;
   const cloudMH = Math.max(cloudMid, cloudHigh);
+  const h = d.humidity;
+  const v = d.visibility;
 
-  // === 1. 中高层云：色彩载体，非线性曲线 ===
-  if (cloudMH < 5)  quality -= 45;
-  else if (cloudMH < 12) quality -= 28;
-  else if (cloudMH < 20) quality -= 10;
-  else if (cloudMH >= 20 && cloudMH <= 55) quality += 8; // 最佳区间
-  else if (cloudMH <= 70) quality -= 3;
-  else if (cloudMH <= 82) quality -= 15;
-  else if (cloudMH <= 92) quality -= 30;
-  else quality -= 45;
+  // === 1. 中高层云：色彩载体（精细非线性曲线） ===
+  // 核心区间拉得更宽，让云量在 10-70% 都有较好表现
+  if (cloudMH < 3)  quality -= 52;       // 万里无云 → 几乎不可能出霞
+  else if (cloudMH < 8) quality -= 35;   // 微量云 → 很淡
+  else if (cloudMH < 15) quality -= 18;  // 偏少
+  else if (cloudMH >= 18 && cloudMH <= 58) quality += 10; // ★ 最佳区间：云量恰到好处
+  else if (cloudMH <= 70) quality -= 2;
+  else if (cloudMH <= 82) quality -= 12;
+  else if (cloudMH <= 92) quality -= 28;
+  else quality -= 48;                    // 完全阴天
 
-  // === 2. 中高云叠加奖励 ===
-  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 70) {
-    quality += 10; // 多层云：散射光线产生更丰富的色彩层次
+  // === 2. 中高云叠加奖励（两层不同高度的云 = 更丰富的色彩层次） ===
+  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 72) {
+    quality += 12;
   }
 
-  // === 3. 低云 ===
-  if (d.cloudLow > 65) quality -= 28;
-  else if (d.cloudLow > 40) quality -= 16;
-  else if (d.cloudLow > 20) quality -= 6;
-  else if (d.cloudLow > 8) quality -= 2;
+  // === 3. 低云遮挡关系（核心改进） ===
+  // 关键新逻辑：低云多但中高层云也有 → 低云遮住地平线，中高层云被遮看不见
+  // 低云遮挡地平线（直接减分）
+  if (cloudLow > 70) {
+    quality -= 30;
+    // 低云太厚时，即使有中高层云也被遮挡 → 额外惩罚
+    if (cloudMH > 20) quality -= 10; // 有云但看不见
+  } else if (cloudLow > 50) {
+    quality -= 18;
+  } else if (cloudLow > 30) {
+    quality -= 8;
+  } else if (cloudLow > 12) {
+    quality -= 3;
+  }
+  // 低云很少 → 加分（地平线清晰）
+  if (cloudLow < 8) quality += 4;
 
-  // === 4. 湿度：倒U曲线 — 30-65%最佳，太干没色、太湿浑浊 ===
-  const h = d.humidity;
-  if (h < 15) quality -= 20;     // 极端干燥
-  else if (h < 25) quality -= 12;
-  else if (h < 30) quality -= 5;
-  else if (h >= 35 && h <= 60) quality += 6; // 最佳色彩饱和度区间
-  else if (h <= 70) quality += 3;
-  else if (h <= 80) quality -= 3;
-  else if (h <= 88) quality -= 10;
-  else quality -= 20;            // 极端潮湿
+  // === 4. 湿度倒U曲线（精细版） ===
+  if (h < 10) quality -= 25;       // 太干 → 颜色寡淡
+  else if (h < 18) quality -= 16;
+  else if (h < 25) quality -= 8;
+  else if (h >= 32 && h <= 58) quality += 7; // ★ 最佳湿度区间
+  else if (h <= 65) quality += 4;
+  else if (h <= 72) quality -= 2;
+  else if (h <= 80) quality -= 6;
+  else if (h <= 88) quality -= 14;
+  else quality -= 24;
 
-  // === 5. 能见度 ===
-  const v = d.visibility;
-  if (v < 1500) quality -= 30;
-  else if (v < 3000) quality -= 20;
-  else if (v < 5000) quality -= 10;
-  else if (v < 8000) quality -= 3;
-  else if (v >= 12000) quality += 6; // 通透奖励
-  else quality += 3;
+  // === 5. 能见度（空气质量直接体现） ===
+  if (v < 1000) quality -= 40;     // 浓雾
+  else if (v < 2000) quality -= 28;
+  else if (v < 3500) quality -= 16;
+  else if (v < 5000) quality -= 8;
+  else if (v < 7000) quality -= 3;
+  else if (v >= 15000) quality += 8;  // 超通透
+  else if (v >= 10000) quality += 4;  // 通透
 
-  // === 6. 湿度 × 能见度 联合惩罚 ===
-  // 高湿 + 低能见度 = 雾霾/雾，极大降低画质
-  if (h > 75 && v < 5000) quality -= 10;
-  if (h > 85 && v < 3000) quality -= 10;
+  // === 6. 联合惩罚（空气质量的综合效应） ===
+  // 高湿+低能见度 = 雾/霾
+  if (h > 70 && v < 4000) quality -= 14;
+  if (h > 82 && v < 6000) quality -= 10;
+  // 低湿+低能见度 = 霾/沙尘（不含雾）
+  if (h < 50 && v < 3000) quality -= 8;
+  // 低湿+高能见度+中等云 = 最清澈的晚霞条件
+  if (h >= 25 && h <= 55 && v > 10000 && cloudMH >= 15 && cloudMH <= 55) {
+    quality += 6;
+  }
+
+  // === 7. 气溶胶间接评分（基于能见度+湿度+云量的联合推断） ===
+  // 能见度在 8-15km 且湿度适中 → 气溶胶少，通透度好
+  if (v >= 8000 && v <= 15000 && h >= 30 && h <= 60) quality += 4;
+  // 能见度 > 15km → 极低气溶胶，极致通透
+  if (v > 15000 && h >= 20 && h <= 55) quality += 5;
 
   return Math.max(0, Math.min(100, Math.round(quality)));
 }
@@ -1334,15 +1387,31 @@ function getTrendData(data, di, type) {
 function calcScore(d, type, trendData) {
   const prob = calcProbability(d, type, trendData);
   const quality = calcQuality(d, type);
-  // 综合评分 = 概率 × 质量的加权几何平均（偏向低分，更严格）
-  const combined = Math.round(Math.sqrt(prob * quality));
-  return Math.max(0, Math.min(100, combined));
+  // 基础综合分 = 概率 × 质量的加权几何平均（偏向低分，更严格）
+  const combined = Math.sqrt(prob * quality);
+  // 扩充到 0-250 量程（对应 sunsetbot 0.001-2.5 级别）
+  // 映射：0分 → 0, 50分 → 0.5, 100分 → 2.5
+  // 非线性拉伸：让中等分数对应"小烧"，高分段更有区分度
+  let score;
+  if (combined < 20) {
+    score = Math.round(combined * 0.3); // 0-20 → 0-6
+  } else if (combined < 50) {
+    score = Math.round(6 + (combined - 20) * 0.8); // 20-50 → 6-30
+  } else if (combined < 75) {
+    score = Math.round(30 + (combined - 50) * 2.0); // 50-75 → 30-80
+  } else if (combined < 90) {
+    score = Math.round(80 + (combined - 75) * 4.0); // 75-90 → 80-140
+  } else {
+    score = Math.round(140 + (combined - 90) * 11.0); // 90-100 → 140-250
+  }
+  return Math.max(0, Math.min(250, score));
 }
 
 // === 摄影建议 ===
 function buildTips(d, type) {
   const tips = [];
   const cloudMH = Math.max(d.cloudMid, d.cloudHigh);
+  const cloudLow = d.cloudLow;
 
   if (cloudMH >= 15 && cloudMH <= 65) {
     tips.push('✨ <strong>最佳云层条件</strong>——中高层云量适中，霞光色彩层次丰富。');
@@ -1352,27 +1421,35 @@ function buildTips(d, type) {
     tips.push('🌤️ 云量偏少，霞光可能较为清淡，<strong>适合拍摄剪影</strong>风格。');
   }
 
-  if (d.cloudLow > 35) {
+  if (cloudLow > 35) {
     tips.push('⚠️ 低云较多，地平线附近可能被遮挡，<strong>建议找高地或制高点</strong>拍摄。');
+  } else if (cloudLow < 8 && cloudMH >= 15) {
+    tips.push('✅ 低云很少，地平线清晰通透，霞光视野良好。');
   }
 
   if (d.humidity > 80) {
     tips.push('💧 湿度偏高，注意<strong>镜头防雾</strong>，可备暖宝宝贴在镜筒上。');
+  } else if (d.humidity >= 30 && d.humidity <= 58) {
+    tips.push('💨 湿度适中，色彩饱和度预期良好。');
   }
 
-  if (d.visibility < 4000) {
+  if (d.visibility < 2000) {
+    tips.push('🌫️ 能见度极低（<2km），可能为雾/重霾，<strong>不建议出动</strong>。');
+  } else if (d.visibility < 4000) {
     tips.push('🌫️ 能见度偏低，后期需加强<strong>去雾处理</strong>。');
+  } else if (d.visibility > 12000) {
+    tips.push('🔭 能见度极佳，空气通透度极好，色彩更鲜明。');
   }
 
   if (d.precipProb > 30) {
     tips.push('🌧️ 降水概率较高，带上<strong>防水装备</strong>，雨后初晴反而可能出大片。');
   }
 
-  if (d.visibility > 8000 && cloudMH >= 20 && cloudMH <= 55 && d.humidity >= 30 && d.humidity <= 65) {
-    tips.unshift('🎯 <strong>完美条件</strong>——各项指标都在理想范围，大概率出片！');
+  if (d.visibility > 10000 && cloudMH >= 18 && cloudMH <= 55 && d.humidity >= 28 && d.humidity <= 55) {
+    tips.unshift('🎯 <strong>完美条件</strong>——通透 + 云量 + 湿度均在理想范围，大概率出片！');
   }
 
-  if (type === 'morning' && d.temp < 10) {
+  if (type === 'morning' && d.temp < 8) {
     tips.push('🥶 清晨气温低，注意<strong>保暖和电池续航</strong>。');
   }
 
@@ -1404,30 +1481,38 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
   const timeRange = `${fmt(startTime)} - ${fmt(endTime)}`;
 
   function scoreColor(s) {
-    if (s >= 85) return '#e040fb';
-    if (s >= 65) return '#4caf50';
-    if (s >= 45) return '#ffeb3b';
-    if (s >= 25) return '#ff9800';
-    return '#ff4444';
+    if (s >= 200) return '#ff1744';   // 大烧
+    if (s >= 150) return '#e040fb';   // 优质
+    if (s >= 100) return '#4caf50';   // 好
+    if (s >= 60) return '#ffeb3b';    // 一般
+    if (s >= 25) return '#ff9800';    // 偏差
+    return '#ff4444';                 // 差
   }
 
   const scoreColorMain = scoreColor(score);
 
   const verdictMap = [
-    { min: 85, text: '🔥 必出大片', emoji: '🔥' },
-    { min: 65, text: '✨ 强烈推荐出动', emoji: '✨' },
-    { min: 45, text: '👀 值得期待', emoji: '👀' },
-    { min: 25, text: '🤔 有一定可能', emoji: '🤔' },
-    { min: 0,  text: '😴 不太理想', emoji: '😴' },
+    { min: 200, text: '🔥 大烧 — 世纪朝/晚霞', emoji: '🔥' },
+    { min: 150, text: '✨ 优质朝/晚霞 — 强烈推荐出动', emoji: '✨' },
+    { min: 100, text: '🌟 好烧 — 值得期待', emoji: '🌟' },
+    { min: 60,  text: '👀 小到中烧 — 有一定可能', emoji: '👀' },
+    { min: 25,  text: '🤔 微烧 — 不太理想', emoji: '🤔' },
+    { min: 0,   text: '😴 无烧 — 建议休息', emoji: '😴' },
   ];
   const verdict = verdictMap.find(v => score >= v.min);
 
   // 概率与质量的文字评级
-  const probDesc = prob >= 65 ? '✨ 较高' : prob >= 35 ? '中等' : '偏低';
-  const qualDesc = quality >= 65 ? '🎨 绚丽' : quality >= 35 ? '尚可' : '平淡';
+  const probDesc = prob >= 75 ? '✨ 较高' : prob >= 50 ? '中等' : prob >= 25 ? '偏低' : '极低';
+  const qualDesc = quality >= 75 ? '🎨 绚丽' : quality >= 50 ? '尚可' : quality >= 25 ? '平淡' : '差';
 
-  const probColor = scoreColor(prob);
-  const qualColor = scoreColor(quality);
+  function probColorFn(s) {
+    if (s >= 75) return '#4caf50';
+    if (s >= 50) return '#ffeb3b';
+    if (s >= 30) return '#ff9800';
+    return '#ff4444';
+  }
+  const probColor = probColorFn(prob);
+  const qualColor = probColorFn(quality);
 
   const factors = [
     { name: '中高层云', val: Math.max(data.cloudMid, data.cloudHigh) + '%',
@@ -1437,7 +1522,7 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
     { name: '总云量', val: data.cloudCover + '%',
       cls: data.cloudCover > 85 ? 'bad' : data.cloudCover < 5 ? 'warn' : 'good' },
     { name: '湿度', val: data.humidity + '%',
-      cls: data.humidity > 85 ? 'bad' : data.humidity < 25 ? 'warn' : 'good' },
+      cls: data.humidity > 85 ? 'bad' : data.humidity >= 32 && data.humidity <= 60 ? 'good' : data.humidity < 25 ? 'warn' : 'good' },
     { name: '降水概率', val: data.precipProb + '%',
       cls: data.precipProb > 30 ? 'bad' : data.precipProb > 10 ? 'warn' : 'good' },
     { name: '能见度', val: (data.visibility / 1000).toFixed(1) + 'km',
@@ -1470,6 +1555,10 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
         </div>
         <div class="score-text">
           <div class="score-verdict" style="color:${scoreColorMain}">${verdict ? verdict.emoji + ' ' + verdict.text : '—'}</div>
+          <div style="display:flex;align-items:baseline;gap:4px;margin-top:2px;">
+            <span style="font-size:1.3rem;font-weight:800;color:${scoreColorMain}">${score}</span>
+            <span style="font-size:0.65rem;color:var(--text-dim);">/ 250</span>
+          </div>
           <div class="score-desc">${emoji} ${eventLabel}时段 ${timeRange}</div>
         </div>
       </div>
