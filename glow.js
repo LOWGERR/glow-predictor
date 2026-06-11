@@ -30,6 +30,18 @@ const state = {
 // === 初始化 ===
 function init() {
   bindDOM();
+  // 自动读取并显示版本号（从 glow.js?v=N 中提取）
+  try {
+    const scriptEl = document.querySelector('script[src*="glow.js"]');
+    if (scriptEl) {
+      const match = scriptEl.src.match(/v=(\d+)/);
+      if (match) {
+        const badge = document.querySelector('.header-badge');
+        if (badge) badge.textContent = '摄影助手 v' + match[1];
+      }
+    }
+  } catch(e) {}
+
   $tabBar.addEventListener('click', handleTabClick);
   // $locateBtn.addEventListener('click', autoLocate);
   document.getElementById('locateBtn').addEventListener('click', autoLocate);
