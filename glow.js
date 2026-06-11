@@ -14,7 +14,7 @@ let $weatherIcon, $weatherTemp, $weatherDesc;
 let $wdHumidity, $wdCloud, $wdVisibility, $wdPrecip;
 let $sunriseTime, $sunsetTime, $sunriseCountdown, $sunsetCountdown, $countdownBar;
 let $blueMorning, $goldMorning, $goldEvening, $blueEvening;
-let $srAzimuth, $ssAzimuth, $compassArrow, $compassBtn;
+let $srAzimuth, $ssAzimuth, $compassArrow;
 let $mapPickBtn, $mapModal, $mapContainer, $mapCoords, $mapCancelBtn, $mapConfirmBtn;
 let $mapLocateBtn, $mapSearchInput, $mapSearchBtn, $mapSearchResults;
 
@@ -48,7 +48,6 @@ function init() {
   // $locateBtn.addEventListener('click', autoLocate);
   document.getElementById('locateBtn').addEventListener('click', autoLocate);
   $mapPickBtn.addEventListener('click', openMapPicker);
-  if ($compassBtn) $compassBtn.addEventListener('click', startCompass);
 
   const saved = localStorage.getItem('glow_predictor_location');
   if (saved) {
@@ -103,7 +102,6 @@ function bindDOM() {
   $srAzimuth = document.getElementById('srAzimuth');
   $ssAzimuth = document.getElementById('ssAzimuth');
   $compassArrow = document.getElementById('compassArrow');
-  $compassBtn = document.getElementById('compassBtn');
   $mapPickBtn = document.getElementById('mapPickBtn');
   $mapModal = document.getElementById('mapModal');
   $mapContainer = document.getElementById('mapContainer');
@@ -1186,79 +1184,6 @@ function _calcSolarAzimuth(lat, dateStr, type) {
   else azimuth += 180;
 
   return Math.round(((azimuth % 360) + 360) % 360);
-}
-
-// === 手机罗盘功能 ===
-let _deviceHeading = null;
-let _compassActive = false;
-
-async function startCompass() {
-  if (_compassActive) return;
-
-  // iOS 13+ 需要用户授权
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const permission = await DeviceOrientationEvent.requestPermission();
-      if (permission !== 'granted') {
-        $compassBtn.textContent = '⚠️ 权限被拒绝';
-        setTimeout(() => { $compassBtn.textContent = '🧭 开启指南针'; }, 2000);
-        return;
-      }
-    } catch(e) {
-      $compassBtn.textContent = '⚠️ 不支持此设备';
-      setTimeout(() => { $compassBtn.textContent = '🧭 开启指南针'; }, 2000);
-      return;
-    }
-  }
-
-  _compassActive = true;
-  $compassBtn.classList.add('active');
-  $compassBtn.textContent = '✅ 指南针已开启';
-
-  // 优先使用 absolute 事件（更准确）
-  window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-  // 兼容旧设备
-  window.addEventListener('deviceorientation', handleOrientation, true);
-}
-
-function handleOrientation(e) {
-  // webkitCompassHeading: iOS专用，0=正北，顺时针
-  // alpha: Android标准，但方向可能相反
-  if (e.webkitCompassHeading != null) {
-    _deviceHeading = e.webkitCompassHeading;
-  } else if (e.alpha != null) {
-    _deviceHeading = (360 - e.alpha) % 360;
-  }
-  updateCompassUI();
-}
-
-function updateCompassUI() {
-  if (_deviceHeading == null || !state.lat) return;
-
-  const di = state.activeTab;
-  const daily = state.forecastData?.daily;
-  if (!daily || !daily.time[di]) return;
-
-  const srAz = _calcSolarAzimuth(state.lat, daily.time[di], 'sunrise');
-  const ssAz = _calcSolarAzimuth(state.lat, daily.time[di], 'sunset');
-
-  if ($srAzimuth) $srAzimuth.textContent = srAz + '°';
-  if ($ssAzimuth) $ssAzimuth.textContent = ssAz + '°';
-
-  // 箭头指向当前朝向与日落方位的偏差（默认显示日落方向）
-  const diff = ((ssAz - _deviceHeading) % 360 + 360) % 360;
-  if ($compassArrow) {
-    $compassArrow.style.transform = `rotate(${diff}deg)`;
-    // 当偏差 < 15° 时高亮提示"已对准"
-    if (diff < 15 || diff > 345) {
-      $compassArrow.classList.add('aligned');
-      $compassArrow.textContent = '✓';
-    } else {
-      $compassArrow.classList.remove('aligned');
-      $compassArrow.textContent = '↑';
-    }
-  }
 }
 
 // === 云底高度估算（基于温度-露点差） ===
