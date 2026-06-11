@@ -239,6 +239,8 @@ function openMapPicker() {
   $mapCoords.textContent = '定位中…';
   $mapConfirmBtn.textContent = '确定';
   $mapConfirmBtn.disabled = true;
+  // 初始化地图搜索插件（AutoComplete + PlaceSearch）
+  initMapSearch();
   setTimeout(initMapInstance, 150);
 }
 
@@ -258,9 +260,10 @@ function initMapInstance() {
       showIndoorMap: false
     });
 
+    // 点选模式：点击地图任意位置放置标记
     _mapInstance.on('click', (e) => {
-      _mapLat = e.longlat.getLat();
-      _mapLon = e.longlat.getLng();
+      _mapLat = e.lnglat.getLat();
+      _mapLon = e.lnglat.getLng();
       placeMarker(_mapLat, _mapLon);
       updateMapCoordsLabel();
     });
@@ -270,7 +273,7 @@ function initMapInstance() {
     placeMarker(_mapLat, _mapLon);
     updateMapCoordsLabel();
 
-    // GPS ? GCJ-02 转换后定位（带超时强制回退）
+    // GPS → GCJ-02 转换后定位（带超时强制回退）
     let gpsResolved = false;
     if (navigator.geolocation) {
       const gpsTimeout = setTimeout(() => {
@@ -298,7 +301,7 @@ function initMapInstance() {
         () => {
           clearTimeout(gpsTimeout);
           gpsResolved = true;
-          // GPS 失败 ? 保持已初始化的 state 位置
+          // GPS 失败 → 保持已初始化的 state 位置
         },
         { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
       );
@@ -342,7 +345,7 @@ function initMapInstance() {
         () => {
           clearTimeout(gpsTimeout);
           gpsResolved = true;
-          // GPS 失败 ? 保持已初始化的 state 位置
+          // GPS 失败 → 保持已初始化的 state 位置
         },
         { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
       );
@@ -385,7 +388,7 @@ function placeMarker(lat, lon) {
   // 使用内嵌 SVG 图标（避免高德默认图标资源加载失败的问题）
   _mapMarker = new AMap.Marker({
     position: [lon, lat],
-    draggable: true,
+    draggable: false,  // 禁用拖拽，仅支持点击地图选点
     zIndex: 999,
     icon: new AMap.Icon({
       size: new AMap.Size(25, 34),
@@ -393,12 +396,6 @@ function placeMarker(lat, lon) {
       image: MARKER_SVG,
       imageOffset: new AMap.Pixel(0, 0)
     })
-  });
-  _mapMarker.on('dragend', (e) => {
-    const pos = e.target.getPosition();
-    _mapLat = pos.getLat();
-    _mapLon = pos.getLng();
-    updateMapCoordsLabel();
   });
   _mapMarker.setMap(_mapInstance);
 }
@@ -698,39 +695,90 @@ function bearing(lat1, lon1, lat2, lon2) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
-// === 地图内搜索（高德 REST API — 比 JS API 插件更可靠）===
-async function mapSearch() {
-  const keyword = $mapSearchInput.value.trim();
+// === 地图内搜索（高德 JS API — AutoComplete + PlaceSearch）===
+let _autoComplete = null;
+let _placeSearch = null;
+
+function initMapSearch() {
+  if (_autoComplete) return; // 已初始化
+
+  // 输入提示
+  _autoComplete = new AMap.AutoComplete({
+    input: 'mapSearchInput',
+    city: '全国',
+    citylimit: false,
+    extensions: 'all'
+  });
+
+  // 点击下拉项时执行 POI 搜索
+  _autoComplete.on('select', (e) => {
+    const poi = e.poi;
+    if (!poi || !poi.location) return;
+    const [lon, lat] = poi.location.split(',').map(Number);
+    _mapLat = lat; _mapLon = lon;
+    if (_mapInstance) {
+      _mapInstance.setCenter([lon, lat]);
+      _mapInstance.setZoom(16);
+      placeMarker(lat, lon);
+      updateMapCoordsLabel();
+    }
+    $mapSearchResults.classList.remove('show');
+  });
+
+  // 回车键触发精确 POI 搜索
+  $mapSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      doPlaceSearch($mapSearchInput.value.trim());
+    }
+  });
+}
+
+async function doPlaceSearch(keyword) {
   if (!keyword) return;
   $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--text-dim)">搜索中…</div>';
   $mapSearchResults.classList.add('show');
+
   try {
-    const res = await fetch(`${AMAP_SEARCH_URL}?key=${AMAP_KEY}&keywords=${encodeURIComponent(keyword)}&offset=10`);
-    const data = await res.json();
-    if (data.status !== '1' || !data.pois || data.pois.length === 0) {
-      $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--text-dim)">未找到地点</div>';
-      return;
-    }
-    $mapSearchResults.innerHTML = data.pois.map((p, i) => {
-      const [long, lat] = p.location.split(',').map(Number);
-      const addr = p.address || '';
+    const results = await new Promise((resolve, reject) => {
+      if (!_placeSearch) {
+        _placeSearch = new AMap.PlaceSearch({
+          pageSize: 10,
+          pageIndex: 1,
+          city: '全国',
+          citylimit: false,
+          extensions: 'all'
+        });
+      }
+      _placeSearch.search(keyword, (status, result) => {
+        if (status === 'complete' && result.info === 'OK' && result.poiList && result.poiList.pois.length > 0) {
+          resolve(result.poiList.pois);
+        } else {
+          reject(new Error('未找到地点'));
+        }
+      });
+    });
+
+    $mapSearchResults.innerHTML = results.map((p, i) => {
+      const [lon, lat] = p.location.split(',').map(Number);
+      const addr = p.address || p.district || '';
       return `<div class="result-item" data-idx="${i}">
         <div class="result-name">${p.name}</div>
-        <div class="result-detail">${addr} · ${lat.toFixed(4)}, ${long.toFixed(4)}</div>
+        <div class="result-detail">${addr} · ${lat.toFixed(4)}, ${lon.toFixed(4)}</div>
       </div>`;
     }).join('');
+
     $mapSearchResults.querySelectorAll('.result-item').forEach(el => {
       el.addEventListener('click', () => {
         const idx = +el.dataset.idx;
-        const p = data.pois[idx];
+        const p = results[idx];
         if (!p) return;
-        const [long, lat] = p.location.split(',').map(Number);
-        // 高德搜索结果已经是 GCJ-02
-        _mapLat = lat; _mapLon = long;
+        const [lon, lat] = p.location.split(',').map(Number);
+        _mapLat = lat; _mapLon = lon;
         if (_mapInstance) {
-          _mapInstance.setCenter([long, lat]);
+          _mapInstance.setCenter([lon, lat]);
           _mapInstance.setZoom(16);
-          placeMarker(lat, long);
+          placeMarker(lat, lon);
           updateMapCoordsLabel();
         }
         $mapSearchResults.classList.remove('show');
@@ -738,8 +786,13 @@ async function mapSearch() {
       });
     });
   } catch(e) {
-    $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--bad)">搜索失败，请重试</div>';
+    $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--bad)">未找到地点，请尝试其他关键词</div>';
   }
+}
+
+// 兼容旧版 mapSearch 调用
+async function mapSearch() {
+  await doPlaceSearch($mapSearchInput.value.trim());
 }
 
 // === 高德逆地理编码（返回城市名+国家）===
