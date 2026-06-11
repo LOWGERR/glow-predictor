@@ -1715,151 +1715,8 @@ if (document.readyState === 'loading') {
 
 console.log('🌅 朝霞晚霞预测 v2 · 摄影助手已就绪');
 
-// ============================================================
-// 🗺️ 本地地图预览 — 当前城市周边朝霞/晚霞质量地图
-// ============================================================
-
-// 县级市/区列表（覆盖全国，用于筛选周边）
-const MAP_CITIES = [
-  {n:"漠河",lat:52.97,lon:122.52,p:"黑龙江"},{n:"黑河",lat:50.25,lon:127.48,p:"黑龙江"},{n:"伊春",lat:47.72,lon:128.84,p:"黑龙江"},{n:"齐齐哈尔",lat:47.35,lon:123.92,p:"黑龙江"},{n:"大庆",lat:46.59,lon:125.10,p:"黑龙江"},{n:"哈尔滨",lat:45.75,lon:126.63,p:"黑龙江"},{n:"牡丹江",lat:44.58,lon:129.60,p:"黑龙江"},{n:"长春",lat:43.88,lon:125.32,p:"吉林"},{n:"吉林市",lat:43.85,lon:126.56,p:"吉林"},{n:"沈阳",lat:41.80,lon:123.38,p:"辽宁"},{n:"大连",lat:38.91,lon:121.62,p:"辽宁"},{n:"北京",lat:39.90,lon:116.40,p:"北京"},{n:"天津",lat:39.12,lon:117.20,p:"天津"},{n:"石家庄",lat:38.05,lon:114.52,p:"河北"},{n:"唐山",lat:39.63,lon:118.18,p:"河北"},{n:"秦皇岛",lat:39.93,lon:119.59,p:"河北"},{n:"太原",lat:37.87,lon:112.56,p:"山西"},{n:"大同",lat:40.08,lon:113.30,p:"山西"},{n:"呼和浩特",lat:40.82,lon:111.75,p:"内蒙古"},{n:"包头",lat:40.66,lon:109.84,p:"内蒙古"},{n:"济南",lat:36.65,lon:117.00,p:"山东"},{n:"青岛",lat:36.07,lon:120.38,p:"山东"},{n:"烟台",lat:37.46,lon:121.45,p:"山东"},{n:"威海",lat:37.51,lon:122.12,p:"山东"},{n:"日照",lat:35.42,lon:119.53,p:"山东"},{n:"临沂",lat:35.05,lon:118.34,p:"山东"},{n:"郑州",lat:34.76,lon:113.65,p:"河南"},{n:"洛阳",lat:34.62,lon:112.45,p:"河南"},{n:"西安",lat:34.34,lon:108.94,p:"陕西"},{n:"咸阳",lat:34.35,lon:108.70,p:"陕西"},{n:"兰州",lat:36.06,lon:103.82,p:"甘肃"},{n:"西宁",lat:36.62,lon:101.78,p:"青海"},{n:"银川",lat:38.49,lon:106.23,p:"宁夏"},{n:"乌鲁木齐",lat:43.82,lon:87.62,p:"新疆"},{n:"克拉玛依",lat:45.60,lon:84.87,p:"新疆"},{n:"拉萨",lat:29.65,lon:91.12,p:"西藏"},{n:"日喀则",lat:29.27,lon:88.89,p:"西藏"},{n:"成都",lat:30.57,lon:104.07,p:"四川"},{n:"绵阳",lat:31.47,lon:104.73,p:"四川"},{n:"重庆",lat:29.57,lon:106.55,p:"重庆"},{n:"贵阳",lat:26.65,lon:106.63,p:"贵州"},{n:"昆明",lat:25.04,lon:102.68,p:"云南"},{n:"大理",lat:25.59,lon:100.23,p:"云南"},{n:"南宁",lat:22.82,lon:108.37,p:"广西"},{n:"桂林",lat:25.27,lon:110.28,p:"广西"},{n:"广州",lat:23.13,lon:113.26,p:"广东"},{n:"深圳",lat:22.55,lon:114.06,p:"广东"},{n:"珠海",lat:22.27,lon:113.57,p:"广东"},{n:"东莞",lat:23.05,lon:113.74,p:"广东"},{n:"佛山",lat:23.03,lon:113.12,p:"广东"},{n:"厦门",lat:24.48,lon:118.09,p:"福建"},{n:"福州",lat:26.07,lon:119.30,p:"福建"},{n:"南昌",lat:28.68,lon:115.86,p:"江西"},{n:"长沙",lat:28.23,lon:112.94,p:"湖南"},{n:"武汉",lat:30.58,lon:114.30,p:"湖北"},{n:"合肥",lat:31.82,lon:117.23,p:"安徽"},{n:"南京",lat:32.06,lon:118.80,p:"江苏"},{n:"苏州",lat:31.30,lon:120.58,p:"江苏"},{n:"无锡",lat:31.49,lon:120.31,p:"江苏"},{n:"上海",lat:31.23,lon:121.47,p:"上海"},{n:"杭州",lat:30.27,lon:120.15,p:"浙江"},{n:"宁波",lat:29.87,lon:121.54,p:"浙江"},{n:"温州",lat:28.00,lon:120.70,p:"浙江"},{n:"三亚",lat:18.25,lon:109.51,p:"海南"},{n:"海口",lat:20.02,lon:110.35,p:"海南"},{n:"台北",lat:25.03,lon:121.57,p:"台湾"},{n:"香港",lat:22.28,lon:114.17,p:"香港"},{n:"澳门",lat:22.20,lon:113.55,p:"澳门"}
-];
-
-// 获取周边城市（当前城市半径~150km 内的县级市）
-function getNearbyCities(lat, lon, radiusKm) {
-  radiusKm = radiusKm || 150;
-  const R = 6371;
-  const results = [];
-  for (const c of MAP_CITIES) {
-    const dLat = (c.lat - lat) * Math.PI / 180;
-    const dLon = (c.lon - lon) * Math.PI / 180;
-    const a = Math.sin(dLat/2)**2 + Math.cos(lat * Math.PI / 180) * Math.cos(c.lat * Math.PI / 180) * Math.sin(dLon/2)**2;
-    const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    if (dist <= radiusKm) {
-      results.push({...c, dist: Math.round(dist)});
-    }
-  }
-  // 按距离排序
-  results.sort((a,b) => a.dist - b.dist);
-  return results;
-}
-
-// 计算单个城市的朝霞/晚霞评分（简化版，使用基础云量）
-function calcMapScore(data, type) {
-  if (!data || !data.daily) return null;
-  const hourly = data.hourly;
-  if (!hourly || !hourly.time || !hourly.temperature_2m) return null;
-
-  const eventHour = type === 'sunset' ? 18 : 6;
-  // 取事件前后各2小时的均值
-  const hours = [eventHour - 2, eventHour - 1, eventHour, eventHour + 1, eventHour + 2].filter(h => h >= 0 && h < 24);
-  // 计算这个城市这个时段的均值指标
-  let totalCloud = 0, lowCloud = 0, midCloud = 0, highCloud = 0;
-  let tSum = 0, rhSum = 0, visSum = 0, precipSum = 0;
-  let count = 0;
-
-  for (let day = 0; day < Math.min(3, hourly.time.length / 24); day++) {
-    for (const h of hours) {
-      const idx = day * 24 + h;
-      if (idx >= hourly.time.length) continue;
-      if (hourly.cloud_cover) totalCloud += hourly.cloud_cover[idx] || 0;
-      if (hourly.cloud_cover_low) lowCloud += hourly.cloud_cover_low[idx] || 0;
-      if (hourly.cloud_cover_mid) midCloud += hourly.cloud_cover_mid[idx] || 0;
-      if (hourly.cloud_cover_high) highCloud += hourly.cloud_cover_high[idx] || 0;
-      if (hourly.temperature_2m) tSum += hourly.temperature_2m[idx] || 0;
-      if (hourly.relative_humidity_2m) {
-        const rh = hourly.relative_humidity_2m[idx];
-        if (rh !== undefined && rh !== null) rhSum += rh;
-      }
-      // 用湿度+云量推断通透度
-      count++;
-    }
-  }
-
-  if (count === 0) return null;
-  const avgCloud = totalCloud / count;
-  const avgLow = lowCloud / count;
-  const avgMid = midCloud / count;
-  const avgHigh = highCloud / count;
-  const avgRh = rhSum / count;
-  const avgT = tSum / count;
-
-  // 简化评分（0-100分，与主评分不一致，只做相对比较）
-  let score = 50;
-  // 中高层云加分（关键因素）
-  const midHighAvg = (avgMid + avgHigh) / 2;
-  if (midHighAvg >= 18 && midHighAvg <= 58) score += 20;
-  else if (midHighAvg >= 10 && midHighAvg <= 70) score += 10;
-
-  // 低云惩罚
-  if (avgLow > 60) score -= 20;
-  else if (avgLow > 40) score -= 10;
-  else if (avgLow < 15) score += 5; // 低云少加分
-
-  // 湿度打分
-  if (avgRh >= 32 && avgRh <= 60) score += 10;
-  else if (avgRh > 80) score -= 15;
-  else if (avgRh > 70) score -= 5;
-
-  // 总云量
-  if (avgCloud >= 25 && avgCloud <= 75) score += 8;
-  else if (avgCloud > 90) score -= 10;
-
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
-// 地图缓存（避免重复请求）
-const mapDataCache = new Map();
-
-// 加载周边城市数据（批量请求）
-async function loadNearbyMapData(cities, dayIdx) {
-  if (!cities || cities.length === 0) return [];
-
-  // 按城市分组请求（Open-Meteo最多支持一次约40个坐标）
-  const batchSize = 30;
-  const batches = [];
-  for (let i = 0; i < cities.length; i += batchSize) {
-    batches.push(cities.slice(i, i + batchSize));
-  }
-
-  // 构建时间偏移
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0,10);
-  const targetDate = new Date(now);
-  targetDate.setDate(targetDate.getDate() + parseInt(dayIdx || 0));
-  const dateStr = targetDate.toISOString().slice(0,10);
-  // 取一天数据，晚霞时段（14-22时）+ 朝霞时段（4-10时）
-  // 但为了跨天通用，取目标日 0-23 时
-  const startDate = dateStr;
-  const endDate = dateStr;
-
-  const results = [];
-
-  for (const batch of batches) {
-    const lats = batch.map(c => c.lat);
-    const lons = batch.map(c => c.lon);
-    const latStr = lats.join(',');
-    const lonStr = lons.join(',');
-
-    const cacheKey = `${startDate}_${batch[0].n}_${batch.length}`;
-    // 简化版：因为坐标不同，无法简单缓存，每次都请求
-    const hourlyParams = 'temperature_2m,relative_humidity_2m,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation_probability';
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latStr}&longitude=${lonStr}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&hourly=${hourlyParams}&timezone=auto&forecast_days=3`;
-
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      results.push(data);
-    } catch (e) {
-      console.warn('地图数据请求失败:', e);
-    }
-  }
-
-  return results;
-}
-
-// 渲染本地地图（嵌入到预测卡片下方）
-async function renderLocalMap(containerEl, dayIdx, eventType, cityLat, cityLon, cityName) {
+// 渲染本地地图（嵌入到预测卡片下方 — 仅作位置参考）
+function renderLocalMap(containerEl, cityLat, cityLon, cityName) {
   if (!containerEl) return;
 
   // 清空并设置唯一 ID
@@ -1871,48 +1728,18 @@ async function renderLocalMap(containerEl, dayIdx, eventType, cityLat, cityLon, 
   const mapDiv = document.getElementById(mapId);
   if (!mapDiv) return;
 
-  // 获取周边城市
-  const nearby = getNearbyCities(cityLat, cityLon, 150);
-  if (nearby.length < 2) {
-    mapDiv.innerHTML = '<div class="map-empty">附近暂无城市数据</div>';
-    return;
-  }
-
-  // 显示加载
-  mapDiv.innerHTML = '<div class="map-loading">加载本地地图…</div>';
-
-  // 加载气象数据
-  const apiResults = await loadNearbyMapData(nearby, dayIdx);
-
-  // 解析各城市评分
-  const cityScores = [];
-  for (const city of nearby) {
-    // 找对应的 API 返回
-    let cityData = null;
-    for (const res of apiResults) {
-      if (res && res.latitude !== undefined) {
-        // Open-Meteo 返回按请求顺序排列
-        // 找到最接近的这个城市
-        const dist = Math.sqrt((res.latitude - city.lat)**2 + (res.longitude - city.lon)**2);
-        if (dist < 0.5) { cityData = res; break; }
-      }
-    }
-    if (cityData) {
-      const score = calcMapScore(cityData, eventType);
-      cityScores.push({...city, score: score !== null ? score : 0, data: cityData});
-    } else {
-      cityScores.push({...city, score: null});
-    }
-  }
-
-  // 初始化 Leaflet 地图
+  // 初始化 Leaflet 地图（静默参考图）
   const map = L.map(mapId, {
     center: [cityLat, cityLon],
-    zoom: 9,
+    zoom: 10,
     zoomControl: false,
     attributionControl: false,
-    dragging: true,
-    scrollWheelZoom: false
+    dragging: false,
+    scrollWheelZoom: false,
+    touchZoom: false,
+    doubleClickZoom: false,
+    keyboard: false,
+    boxZoom: false
   });
 
   // 暗色底图
@@ -1920,71 +1747,28 @@ async function renderLocalMap(containerEl, dayIdx, eventType, cityLat, cityLon, 
     maxZoom: 18
   }).addTo(map);
 
-  // 计算颜色
-  function getScoreColor(score) {
-    if (score === null || score === undefined) return '#555';
-    if (score >= 85) return '#ff2d2d';      // 大烧 - 红
-    if (score >= 70) return '#ff6b35';       // 优质 - 橙红
-    if (score >= 55) return '#ffa000';       // 好烧 - 橙
-    if (score >= 40) return '#ffd93d';       // 小到中烧 - 黄
-    if (score >= 25) return '#a8e6cf';       // 微烧 - 浅绿
-    return '#6b7b8d';                        // 无烧 - 灰
-  }
-  function getScoreSize(score) {
-    if (score === null) return 5;
-    if (score >= 85) return 12;
-    if (score >= 70) return 10;
-    if (score >= 55) return 9;
-    if (score >= 40) return 8;
-    if (score >= 25) return 7;
-    return 6;
-  }
+  // 当前城市标记（白色圆点 + 名称标签）
+  L.circleMarker([cityLat, cityLon], {
+    radius: 6,
+    fillColor: '#ff6b35',
+    color: '#fff',
+    weight: 2,
+    opacity: 1,
+    fillOpacity: 0.9
+  }).addTo(map);
 
-  // 绘制城市标记
-  for (const c of cityScores) {
-    const color = getScoreColor(c.score);
-    const size = getScoreSize(c.score);
-    const label = c.score !== null ? `${c.n}\n${c.score}分` : `${c.n}\n无数据`;
+  // 城市名称标签（L.divIcon 样式）
+  L.marker([cityLat, cityLon], {
+    icon: L.divIcon({
+      className: 'local-map-label',
+      html: `<div class="map-city-label">${cityName}</div>`,
+      iconSize: [0, 0],
+      iconAnchor: [0, -20]
+    })
+  }).addTo(map);
 
-    // 当前城市用特殊标记
-    if (c.n === cityName || (Math.abs(c.lat - cityLat) < 0.01 && Math.abs(c.lon - cityLon) < 0.01)) {
-      L.circleMarker([c.lat, c.lon], {
-        radius: 12,
-        fillColor: color,
-        color: '#fff',
-        weight: 2,
-        opacity: 1,
-        fillOpacity: 0.8
-      }).addTo(map).bindPopup(`<b>📍 ${c.n}</b><br>评分: <b>${c.score !== null ? c.score + '分' : '暂无'}</b>`);
-    } else {
-      L.circleMarker([c.lat, c.lon], {
-        radius: size,
-        fillColor: color,
-        color: color,
-        weight: 1,
-        opacity: 0.7,
-        fillOpacity: 0.6
-      }).addTo(map).bindPopup(`<b>${c.n}</b><br>评分: <b>${c.score !== null ? c.score + '分' : '暂无'}</b>`);
-    }
-  }
-
-  // 地图尺寸维持在 200-300px 高
+  // 地图尺寸调整
   map.invalidateSize();
-
-  // 添加底部图例说明
-  const legendHtml = `
-    <div class="local-map-legend">
-      <span class="lg-dot" style="background:#6b7b8d"></span>无烧
-      <span class="lg-dot" style="background:#a8e6cf"></span>微烧
-      <span class="lg-dot" style="background:#ffd93d"></span>小中
-      <span class="lg-dot" style="background:#ffa000"></span>好烧
-      <span class="lg-dot" style="background:#ff6b35"></span>优质
-      <span class="lg-dot" style="background:#ff2d2d"></span>大烧
-    </div>`;
-
-  const legend = document.createElement('div');
-  legend.innerHTML = legendHtml;
-  mapDiv.appendChild(legend.firstElementChild);
 }
 
 // 在 renderTabPredictions 之后调用
@@ -1994,22 +1778,16 @@ renderTabPredictions = function(data) {
   // 调用原渲染
   _origRenderTabPredictions(data);
 
-  // 为每个预测卡片添加本地地图
-  const activeTab = state.activeTab !== undefined ? state.activeTab : 0;
+  // 为每个预测卡片下方嵌入县级市位置参考地图
   const lat = state.lat;
   const lon = state.lon;
-  const cityName = state.cityName || '当前位置';
+  const cityName = state.name || '当前位置';
 
   if (!lat || !lon) return;
 
   // 朝霞和晚霞卡片
   const cards = document.querySelectorAll('.prediction-card');
-  cards.forEach((card, idx) => {
-    // 判断是朝霞还是晚霞
-    const header = card.querySelector('.card-header');
-    if (!header) return;
-    const isSunrise = header.textContent.includes('朝霞');
-
+  cards.forEach((card) => {
     // 检查是否已有地图容器
     let mapContainer = card.querySelector('.local-map-wrapper');
     if (mapContainer) return; // 已存在不重复生成
@@ -2019,19 +1797,12 @@ renderTabPredictions = function(data) {
     mapContainer.className = 'local-map-wrapper';
     mapContainer.style.cssText = 'margin: 8px -12px -8px; border-top: 1px solid rgba(255,255,255,0.08); padding: 8px 12px 0;';
 
-    const mapLabel = document.createElement('div');
-    mapLabel.style.cssText = 'font-size: 11px; color: #888; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;';
-    mapLabel.innerHTML = '🗺️ 周边城镇评分';
-    mapContainer.appendChild(mapLabel);
-
     const mapEl = document.createElement('div');
     mapEl.className = 'local-map-embed';
     mapContainer.appendChild(mapEl);
     card.appendChild(mapContainer);
 
-    // 异步加载地图
-    const dayIdx = activeTab;
-    const eventType = isSunrise ? 'sunrise' : 'sunset';
-    renderLocalMap(mapEl, dayIdx, eventType, lat, lon, cityName);
+    // 渲染静默位置参考图
+    renderLocalMap(mapEl, lat, lon, cityName);
   });
 };

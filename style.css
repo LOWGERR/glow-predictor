@@ -835,3 +835,16 @@ body.no-scroll {
   border-radius: 50%;
   vertical-align: middle;
 }
+
+/* 地图上的城市名称标签 */
+.map-city-label {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7);
+  white-space: nowrap;
+  background: rgba(0,0,0,0.5);
+  padding: 2px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+}
