@@ -1,5 +1,7 @@
 /* === 朝霞晚霞预测 · 摄影助手 - v2 === */
 
+// ⚠️ 安全警告：API Key 硬编码在前端代码中，任何查看源码的人都能获取。
+// 建议：监控用量、设置配额限制、定期轮换 Key。
 const AMAP_KEY = '9a559408bacf3862588c08ad3a273edc';
 const AMAP_SEARCH_URL = 'https://restapi.amap.com/v3/place/text';
 const GEO_URL = 'https://geocoding-api.open-meteo.com/v1/search';
@@ -37,12 +39,22 @@ function init() {
   if (saved) {
     try {
       const loc = JSON.parse(saved);
-      state.lat = loc.lat; state.lon = loc.lon;
-      state.name = loc.name; state.country = loc.country;
-      $locName.textContent = state.name;
-      fetchForecast();
-      tryGeoUpdate();
-      return;
+      // 检查缓存是否过期（24小时）
+      const now = Date.now();
+      const cacheAge = now - (loc.timestamp || 0);
+      const CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
+      
+      if (cacheAge < CACHE_TTL) {
+        state.lat = loc.lat; state.lon = loc.lon;
+        state.name = loc.name; state.country = loc.country;
+        $locName.textContent = state.name;
+        fetchForecast();
+        tryGeoUpdate();
+        return;
+      } else {
+        console.log('位置缓存已过期，重新定位');
+        localStorage.removeItem('glow_predictor_location');
+      }
     } catch(e) {}
   }
   selectLocation(39.9042, 116.4074, '北京', '中国', '北京市');
@@ -141,7 +153,9 @@ function selectLocation(lat, lon, name, country) {
   state.name = name || `${lat.toFixed(2)},${lon.toFixed(2)}`;
   state.country = country;
   $locName.textContent = state.name;
-  localStorage.setItem('glow_predictor_location', JSON.stringify({ lat, lon, name: state.name, country }));
+  localStorage.setItem('glow_predictor_location', JSON.stringify({ 
+    lat, lon, name: state.name, country, timestamp: Date.now() 
+  }));
   state.activeTab = 0;
   updateTabUI();
   fetchForecast();
@@ -178,6 +192,8 @@ function _transformLon(x, y) {
 }
 
 // WGS-84 → GCJ-02（同步版，不依赖 AMap JS API，用于 REST API 调用）
+// ⚠️ 注意：此为近似算法，与高德官方转换可能有几十米偏差。
+// 在高密度城区（如上海外滩）可能影响附近 POI 搜索精度，但 10km 范围内通常不明显。
 function wgs84ToGcj02(lat, lon) {
   const dlat = _transformLat(lon - 105.0, lat - 35.0);
   const dlon = _transformLon(lon - 105.0, lat - 35.0);
@@ -249,10 +265,28 @@ function initMapInstance() {
       updateMapCoordsLabel();
     });
 
-    // GPS ? GCJ-02 转换后定位
+    // 先用 state 位置初始化标记，避免 GPS 超时时地图空白
+    _mapLat = initLat; _mapLon = initLon;
+    placeMarker(_mapLat, _mapLon);
+    updateMapCoordsLabel();
+
+    // GPS ? GCJ-02 转换后定位（带超时强制回退）
+    let gpsResolved = false;
     if (navigator.geolocation) {
+      const gpsTimeout = setTimeout(() => {
+        if (!gpsResolved && state.lat) {
+          _mapLat = state.lat; _mapLon = state.lon;
+          _mapInstance.setCenter([_mapLon, _mapLat]);
+          _mapInstance.setZoom(14);
+          placeMarker(_mapLat, _mapLon);
+          updateMapCoordsLabel();
+        }
+      }, 4000);
+
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
+          clearTimeout(gpsTimeout);
+          gpsResolved = true;
           const wgs84 = { lat: pos.coords.latitude, lon: pos.coords.longitude };
           const gcj02 = await convertWGS84toGCJ02(wgs84.lat, wgs84.lon);
           _mapLat = gcj02.lat; _mapLon = gcj02.lon;
@@ -262,33 +296,41 @@ function initMapInstance() {
           updateMapCoordsLabel();
         },
         () => {
-          // GPS 失败 ? 回退到 state 位置
-          if (state.lat) {
-            _mapLat = state.lat; _mapLon = state.lon;
-            _mapInstance.setCenter([_mapLon, _mapLat]);
-            _mapInstance.setZoom(14);
-            placeMarker(_mapLat, _mapLon);
-            updateMapCoordsLabel();
-          }
+          clearTimeout(gpsTimeout);
+          gpsResolved = true;
+          // GPS 失败 ? 保持已初始化的 state 位置
         },
         { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
       );
-    } else if (state.lat) {
-      _mapLat = state.lat; _mapLon = state.lon;
-      _mapInstance.setCenter([_mapLon, _mapLat]);
-      _mapInstance.setZoom(14);
-      placeMarker(_mapLat, _mapLon);
-      updateMapCoordsLabel();
     }
   } else {
     // 复用已有实例
     _mapInstance.setCenter([initLon, initLat]);
     _mapInstance.setZoom(initZoom);
     if (_mapMarker) { _mapInstance.remove(_mapMarker); _mapMarker = null; }
-    // 尝试 GPS 定位
+
+    // 先用 state 位置初始化标记
+    _mapLat = initLat; _mapLon = initLon;
+    placeMarker(_mapLat, _mapLon);
+    updateMapCoordsLabel();
+
+    // 尝试 GPS 定位（带超时强制回退）
+    let gpsResolved = false;
     if (navigator.geolocation) {
+      const gpsTimeout = setTimeout(() => {
+        if (!gpsResolved && state.lat) {
+          _mapLat = state.lat; _mapLon = state.lon;
+          _mapInstance.setCenter([_mapLon, _mapLat]);
+          _mapInstance.setZoom(14);
+          placeMarker(_mapLat, _mapLon);
+          updateMapCoordsLabel();
+        }
+      }, 4000);
+
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
+          clearTimeout(gpsTimeout);
+          gpsResolved = true;
           const wgs84 = { lat: pos.coords.latitude, lon: pos.coords.longitude };
           const gcj02 = await convertWGS84toGCJ02(wgs84.lat, wgs84.lon);
           _mapLat = gcj02.lat; _mapLon = gcj02.lon;
@@ -297,7 +339,11 @@ function initMapInstance() {
           placeMarker(_mapLat, _mapLon);
           updateMapCoordsLabel();
         },
-        () => {},
+        () => {
+          clearTimeout(gpsTimeout);
+          gpsResolved = true;
+          // GPS 失败 ? 保持已初始化的 state 位置
+        },
         { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
       );
     }
@@ -1467,7 +1513,8 @@ function getSourceLabel() {
   };
   const names = sources.map(s => labelMap[s] || s);
   if (names.length >= 2) return names.join(' + ') + ' (集成均值)';
-  return names[0] || 'Open-Meteo';
+  if (names.length === 1) return names[0] + ' (单一模型，部分数据缺失)';
+  return 'Open-Meteo';
 }
 
 function buildPredictionCard(label, type, score, prob, quality, data, tips, timeISO, dateLabel, chartSvg) {
@@ -1637,6 +1684,13 @@ function startCountdown(data) {
 
   tick();
   state.countdownTimer = setInterval(tick, 1000);
+
+  // iOS Safari 后台暂停定时器修复：页面重新可见时立即刷新
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      tick(); // 立即刷新一次，修正后台期间累积的时间偏差
+    }
+  });
 }
 
 function formatDuration(ms) {
