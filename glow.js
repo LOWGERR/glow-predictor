@@ -1714,3 +1714,400 @@ if (document.readyState === 'loading') {
 }
 
 console.log('🌅 朝霞晚霞预测 v2 · 摄影助手已就绪');
+
+// ============================================================
+// 🗺️ 地图预览模块 — 中国朝霞/晚霞质量地图
+// ============================================================
+
+// 中国主要城市网格（覆盖全国均匀分布）
+const MAP_CITIES = [
+  {n:"漠河",lat:52.97,lon:122.52,p:"黑龙江"},{n:"黑河",lat:50.25,lon:127.48,p:"黑龙江"},
+  {n:"伊春",lat:47.73,lon:128.91,p:"黑龙江"},{n:"齐齐哈尔",lat:47.35,lon:123.95,p:"黑龙江"},
+  {n:"佳木斯",lat:46.80,lon:130.36,p:"黑龙江"},{n:"哈尔滨",lat:45.80,lon:126.53,p:"黑龙江"},
+  {n:"牡丹江",lat:44.58,lon:129.60,p:"黑龙江"},{n:"大庆",lat:46.59,lon:125.10,p:"黑龙江"},
+  {n:"长春",lat:43.90,lon:125.32,p:"吉林"},{n:"吉林",lat:43.88,lon:126.56,p:"吉林"},
+  {n:"延吉",lat:42.91,lon:129.51,p:"吉林"},{n:"沈阳",lat:41.80,lon:123.43,p:"辽宁"},
+  {n:"大连",lat:38.92,lon:121.63,p:"辽宁"},{n:"鞍山",lat:41.11,lon:122.99,p:"辽宁"},
+  {n:"丹东",lat:40.14,lon:124.39,p:"辽宁"},{n:"锦州",lat:41.12,lon:121.15,p:"辽宁"},
+  {n:"营口",lat:40.67,lon:122.23,p:"辽宁"},{n:"呼和浩特",lat:40.84,lon:111.75,p:"内蒙古"},
+  {n:"包头",lat:40.66,lon:109.84,p:"内蒙古"},{n:"赤峰",lat:42.26,lon:118.89,p:"内蒙古"},
+  {n:"通辽",lat:43.62,lon:122.26,p:"内蒙古"},{n:"海拉尔",lat:49.21,lon:119.74,p:"内蒙古"},
+  {n:"锡林浩特",lat:43.95,lon:116.09,p:"内蒙古"},{n:"北京",lat:39.90,lon:116.41,p:"北京"},
+  {n:"天津",lat:39.14,lon:117.20,p:"天津"},{n:"石家庄",lat:38.05,lon:114.49,p:"河北"},
+  {n:"唐山",lat:39.63,lon:118.18,p:"河北"},{n:"秦皇岛",lat:39.94,lon:119.59,p:"河北"},
+  {n:"保定",lat:38.87,lon:115.48,p:"河北"},{n:"邯郸",lat:36.61,lon:114.48,p:"河北"},
+  {n:"太原",lat:37.87,lon:112.74,p:"山西"},{n:"大同",lat:40.09,lon:113.29,p:"山西"},
+  {n:"临汾",lat:36.09,lon:111.52,p:"山西"},{n:"运城",lat:35.03,lon:111.00,p:"山西"},
+  {n:"济南",lat:36.67,lon:117.02,p:"山东"},{n:"青岛",lat:36.07,lon:120.33,p:"山东"},
+  {n:"烟台",lat:37.47,lon:121.45,p:"山东"},{n:"威海",lat:37.52,lon:122.12,p:"山东"},
+  {n:"潍坊",lat:36.71,lon:119.16,p:"山东"},{n:"日照",lat:35.42,lon:119.46,p:"山东"},
+  {n:"临沂",lat:35.07,lon:118.34,p:"山东"},{n:"济宁",lat:35.41,lon:116.59,p:"山东"},
+  {n:"郑州",lat:34.76,lon:113.65,p:"河南"},{n:"洛阳",lat:34.62,lon:112.45,p:"河南"},
+  {n:"开封",lat:34.80,lon:114.31,p:"河南"},{n:"南阳",lat:33.01,lon:112.53,p:"河南"},
+  {n:"信阳",lat:32.12,lon:114.07,p:"河南"},{n:"西安",lat:34.34,lon:108.93,p:"陕西"},
+  {n:"宝鸡",lat:34.36,lon:107.14,p:"陕西"},{n:"延安",lat:36.65,lon:109.49,p:"陕西"},
+  {n:"汉中",lat:33.08,lon:107.02,p:"陕西"},{n:"安康",lat:32.69,lon:109.02,p:"陕西"},
+  {n:"兰州",lat:36.06,lon:103.79,p:"甘肃"},{n:"天水",lat:34.58,lon:105.72,p:"甘肃"},
+  {n:"酒泉",lat:39.73,lon:98.49,p:"甘肃"},{n:"敦煌",lat:40.14,lon:94.66,p:"甘肃"},
+  {n:"张掖",lat:38.93,lon:100.46,p:"甘肃"},{n:"西宁",lat:36.62,lon:101.77,p:"青海"},
+  {n:"格尔木",lat:36.42,lon:94.90,p:"青海"},{n:"银川",lat:38.49,lon:106.23,p:"宁夏"},
+  {n:"乌鲁木齐",lat:43.82,lon:87.62,p:"新疆"},{n:"喀什",lat:39.47,lon:75.99,p:"新疆"},
+  {n:"伊宁",lat:43.92,lon:81.32,p:"新疆"},{n:"库尔勒",lat:41.73,lon:86.17,p:"新疆"},
+  {n:"哈密",lat:42.83,lon:93.51,p:"新疆"},{n:"克拉玛依",lat:45.59,lon:84.87,p:"新疆"},
+  {n:"成都",lat:30.57,lon:104.07,p:"四川"},{n:"绵阳",lat:31.47,lon:104.68,p:"四川"},
+  {n:"宜宾",lat:28.77,lon:104.62,p:"四川"},{n:"南充",lat:30.78,lon:106.11,p:"四川"},
+  {n:"达州",lat:31.22,lon:107.50,p:"四川"},{n:"西昌",lat:27.90,lon:102.27,p:"四川"},
+  {n:"重庆",lat:29.57,lon:106.55,p:"重庆"},{n:"万州",lat:30.82,lon:108.37,p:"重庆"},
+  {n:"贵阳",lat:26.65,lon:106.63,p:"贵州"},{n:"遵义",lat:27.73,lon:106.93,p:"贵州"},
+  {n:"昆明",lat:25.04,lon:102.69,p:"云南"},{n:"大理",lat:25.59,lon:100.23,p:"云南"},
+  {n:"丽江",lat:26.86,lon:100.23,p:"云南"},{n:"曲靖",lat:25.49,lon:103.80,p:"云南"},
+  {n:"昭通",lat:27.32,lon:103.72,p:"云南"},{n:"拉萨",lat:29.65,lon:91.14,p:"西藏"},
+  {n:"日喀则",lat:29.27,lon:88.89,p:"西藏"},{n:"林芝",lat:29.58,lon:94.48,p:"西藏"},
+  {n:"武汉",lat:30.58,lon:114.27,p:"湖北"},{n:"宜昌",lat:30.71,lon:111.29,p:"湖北"},
+  {n:"襄阳",lat:32.01,lon:112.12,p:"湖北"},{n:"荆州",lat:30.34,lon:112.24,p:"湖北"},
+  {n:"十堰",lat:32.63,lon:110.79,p:"湖北"},{n:"恩施",lat:30.30,lon:109.48,p:"湖北"},
+  {n:"长沙",lat:28.23,lon:112.94,p:"湖南"},{n:"岳阳",lat:29.37,lon:113.13,p:"湖南"},
+  {n:"衡阳",lat:26.90,lon:112.61,p:"湖南"},{n:"株洲",lat:27.83,lon:113.13,p:"湖南"},
+  {n:"张家界",lat:29.12,lon:110.48,p:"湖南"},{n:"怀化",lat:27.57,lon:109.97,p:"湖南"},
+  {n:"南昌",lat:28.68,lon:115.86,p:"江西"},{n:"九江",lat:29.70,lon:115.99,p:"江西"},
+  {n:"赣州",lat:25.85,lon:114.94,p:"江西"},{n:"景德镇",lat:29.30,lon:117.18,p:"江西"},
+  {n:"上饶",lat:28.45,lon:117.94,p:"江西"},{n:"合肥",lat:31.82,lon:117.23,p:"安徽"},
+  {n:"芜湖",lat:31.35,lon:118.37,p:"安徽"},{n:"黄山",lat:29.72,lon:118.33,p:"安徽"},
+  {n:"安庆",lat:30.54,lon:117.05,p:"安徽"},{n:"蚌埠",lat:32.93,lon:117.37,p:"安徽"},
+  {n:"南京",lat:32.06,lon:118.80,p:"江苏"},{n:"苏州",lat:31.30,lon:120.59,p:"江苏"},
+  {n:"无锡",lat:31.57,lon:120.30,p:"江苏"},{n:"徐州",lat:34.27,lon:119.19,p:"江苏"},
+  {n:"南通",lat:32.00,lon:120.86,p:"江苏"},{n:"常州",lat:31.77,lon:119.97,p:"江苏"},
+  {n:"扬州",lat:32.41,lon:119.41,p:"江苏"},{n:"镇江",lat:32.19,lon:119.44,p:"江苏"},
+  {n:"盐城",lat:33.38,lon:120.16,p:"江苏"},{n:"上海",lat:31.23,lon:121.47,p:"上海"},
+  {n:"杭州",lat:30.27,lon:120.16,p:"浙江"},{n:"宁波",lat:29.87,lon:121.54,p:"浙江"},
+  {n:"温州",lat:28.00,lon:120.70,p:"浙江"},{n:"金华",lat:29.10,lon:119.63,p:"浙江"},
+  {n:"绍兴",lat:30.03,lon:120.57,p:"浙江"},{n:"台州",lat:28.66,lon:121.42,p:"浙江"},
+  {n:"福州",lat:26.07,lon:119.31,p:"福建"},{n:"厦门",lat:24.48,lon:118.09,p:"福建"},
+  {n:"泉州",lat:24.91,lon:118.59,p:"福建"},{n:"漳州",lat:24.52,lon:117.65,p:"福建"},
+  {n:"龙岩",lat:25.10,lon:117.02,p:"福建"},{n:"南平",lat:26.64,lon:118.18,p:"福建"},
+  {n:"广州",lat:23.13,lon:113.26,p:"广东"},{n:"深圳",lat:22.55,lon:114.06,p:"广东"},
+  {n:"珠海",lat:22.27,lon:113.57,p:"广东"},{n:"佛山",lat:23.02,lon:113.12,p:"广东"},
+  {n:"东莞",lat:23.05,lon:113.75,p:"广东"},{n:"中山",lat:22.52,lon:113.38,p:"广东"},
+  {n:"惠州",lat:23.11,lon:114.42,p:"广东"},{n:"汕头",lat:23.37,lon:116.70,p:"广东"},
+  {n:"湛江",lat:21.27,lon:110.36,p:"广东"},{n:"韶关",lat:24.80,lon:113.58,p:"广东"},
+  {n:"梅州",lat:24.29,lon:116.12,p:"广东"},{n:"茂名",lat:21.66,lon:110.92,p:"广东"},
+  {n:"南宁",lat:22.82,lon:108.37,p:"广西"},{n:"桂林",lat:25.27,lon:110.28,p:"广西"},
+  {n:"柳州",lat:24.33,lon:109.40,p:"广西"},{n:"北海",lat:21.47,lon:109.12,p:"广西"},
+  {n:"百色",lat:23.90,lon:106.62,p:"广西"},{n:"海口",lat:20.04,lon:110.32,p:"海南"},
+  {n:"三亚",lat:18.25,lon:109.51,p:"海南"},{n:"香港",lat:22.32,lon:114.17,p:"香港"},
+  {n:"澳门",lat:22.20,lon:113.54,p:"澳门"},{n:"台北",lat:25.04,lon:121.54,p:"台湾"},
+];
+
+// 状态
+const mapState = {
+  map: null,
+  markers: [],
+  dataCache: null,        // 缓存各城市的预报数据
+  dataLoading: false,
+  initialized: false,
+  dayIdx: 0,              // 0=今天, 1=明天, 2=后天
+  eventType: 'sunset',    // 'sunset' 或 'sunrise'
+};
+
+// DOM 引用（已移除，改用 document.getElementById）
+
+
+// 分数→颜色映射
+function scoreToColor(score) {
+  if (score >= 200) return '#d50000';      // 大烧
+  if (score >= 150) return '#ff3d00';      // 优质
+  if (score >= 100) return '#ff9800';      // 好烧
+  if (score >= 60)  return '#ffeb3b';      // 小到中烧
+  if (score >= 25)  return '#00c853';      // 微烧
+  if (score >= 10)  return '#0d47a1';      // 微微烧
+  return '#4a148c';                         // 无烧
+}
+
+function scoreToSize(score) {
+  if (score >= 150) return 14;
+  if (score >= 100) return 11;
+  if (score >= 60)  return 9;
+  if (score >= 25)  return 7;
+  return 6;
+}
+
+function scoreToLabel(s) {
+  if (s >= 200) return '🔥';
+  if (s >= 100) return '🌟';
+  if (s >= 60)  return '✨';
+  if (s >= 25)  return '🌤️';
+  return '';
+}
+
+function getVerdict(score) {
+  if (score >= 200) return '🔥 大烧/世纪朝晚霞';
+  if (score >= 150) return '✨ 优质朝晚霞';
+  if (score >= 100) return '🌟 好烧';
+  if (score >= 60)  return '👀 小到中烧';
+  if (score >= 25)  return '🤔 微烧';
+  return '😴 无烧';
+}
+
+// 简化版评分（无需趋势数据，只用当前时段）
+function calcMapScore(data, type) {
+  const prob = calcProbability(data, type, { cloudDelta: 0, humidityDelta: 0, precipDelta: 0 });
+  const quality = calcQuality(data, type);
+  const combined = Math.pow(prob/100 * quality/100, 0.85) * 250;
+  return Math.max(0, Math.min(250, Math.round(combined)));
+}
+
+// 构建弹窗 HTML
+function buildPopupHTML(city, score, data, type) {
+  const cloudMH = Math.max(data.cloudMid, data.cloudHigh);
+  const verdict = getVerdict(score);
+  const typeLabel = type === 'sunset' ? '🌇 晚霞' : '🌅 朝霞';
+  return `
+    <div class="popup-city-name">${city.n} <span style="font-size:0.7rem;color:#888">${city.p || ''}</span></div>
+    <div class="popup-city-score" style="color:${scoreToColor(score)}">${score}<span style="font-size:0.8rem;color:#aaa">/250</span></div>
+    <div style="font-size:0.85rem;margin-bottom:4px">${typeLabel} · ${verdict}</div>
+    <div class="popup-city-detail">
+      <span>☁️ 中高层云 ${cloudMH}%</span>
+      <span>📉 低云 ${data.cloudLow}%</span><br>
+      <span>💧 ${data.humidity}% 湿度</span>
+      <span>👁 ${(data.visibility/1000).toFixed(1)}km</span>
+      <span>🌧️ ${data.precipProb}%</span>
+    </div>
+  `;
+}
+
+// 从城市数据中提取事件时刻的逐时数据
+function extractMapHourly(data, type, dayIdx) {
+  const daily = data.daily;
+  if (!daily || !daily.time[dayIdx]) return null;
+  
+  const dateStr = daily.time[dayIdx];
+  const hourlyIndices = data.hourly.time
+    .map((t, i) => i)
+    .filter(i => data.hourly.time[i].startsWith(dateStr));
+  
+  if (hourlyIndices.length === 0) return null;
+
+  // 取日出/日落时刻
+  const eventISO = type === 'sunrise' ? daily.sunrise[dayIdx] : daily.sunset[dayIdx];
+  if (!eventISO) return null;
+  
+  const eventDate = new Date(eventISO);
+  const eventHour = eventDate.getHours() + eventDate.getMinutes() / 60;
+  
+  let bestIdx = hourlyIndices[0];
+  let minDiff = Infinity;
+  hourlyIndices.forEach(i => {
+    const h = new Date(data.hourly.time[i]).getHours() + new Date(data.hourly.time[i]).getMinutes() / 60;
+    const diff = Math.abs(h - eventHour);
+    if (diff < minDiff) { minDiff = diff; bestIdx = i; }
+  });
+
+  return extractHourlyData(data, bestIdx);
+}
+
+// 获取地图数据的 API 调用（批量查询所有城市）
+async function fetchMapData(dayIdx, eventType) {
+  const $loading = document.getElementById('mapLoading');
+  $loading.textContent = '正在获取全国气象数据…';
+  $loading.style.display = 'block';
+
+  // Open-Meteo 支持一次查多个坐标，但最多 200+
+  // 按省份分批，每批最多 50 个（稳妥）
+  const batchSize = 40;
+  const allResults = [];
+
+  for (let i = 0; i < MAP_CITIES.length; i += batchSize) {
+    const batch = MAP_CITIES.slice(i, i + batchSize);
+    const lats = batch.map(c => c.lat.toFixed(2)).join(',');
+    const lons = batch.map(c => c.lon.toFixed(2)).join(',');
+    
+    $loading.textContent = `获取气象数据 ${i+1}-${Math.min(i+batchSize, MAP_CITIES.length)}/${MAP_CITIES.length}…`;
+
+    try {
+      const url = `${FORECAST_URL}?latitude=${lats}&longitude=${lons}` +
+        `&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,precipitation_probability,temperature_2m` +
+        `&daily=sunrise,sunset&timezone=auto&forecast_days=${Math.max(3, dayIdx + 1)}`;
+      
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      
+      // json 是数组（多个位置）或单个对象
+      const locations = Array.isArray(json) ? json : [json];
+      allResults.push(...locations);
+    } catch(e) {
+      console.warn(`Batch ${i} failed:`, e);
+      // 填充空值
+      batch.forEach(() => allResults.push(null));
+    }
+  }
+
+  $loading.style.display = 'none';
+  return allResults;
+}
+
+// 初始化/刷新地图
+async function renderMap(dayIdx, eventType) {
+  const $container = document.getElementById('mapPreview');
+  const $loading = document.getElementById('mapLoading');
+  
+  if (!$container) return;
+
+  // 销毁旧地图
+  if (mapState.map) {
+    mapState.map.remove();
+    mapState.map = null;
+    mapState.markers = [];
+  }
+
+  $loading.style.display = 'block';
+  $loading.textContent = '正在获取全国气象数据…';
+
+  const apiResults = await fetchMapData(dayIdx, eventType);
+  
+  // 为每个城市计算评分
+  const cityScores = [];
+  MAP_CITIES.forEach((city, idx) => {
+    const raw = apiResults[idx];
+    if (!raw) {
+      cityScores.push({ city, score: 0, data: null });
+      return;
+    }
+    const hourlyData = extractMapHourly(raw, eventType, dayIdx);
+    if (!hourlyData) {
+      cityScores.push({ city, score: 0, data: null });
+      return;
+    }
+    const score = calcMapScore(hourlyData, eventType === 'sunrise' ? 'morning' : 'evening');
+    cityScores.push({ city, score, data: hourlyData });
+  });
+
+  // 初始化 Leaflet 地图
+  const map = L.map($container, {
+    center: [35.0, 108.0],
+    zoom: 4.5,
+    zoomControl: true,
+    attributionControl: false,
+    scrollWheelZoom: true,
+  });
+
+  // 暗色底图（CartoDB dark 风格）
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd',
+    maxZoom: 18,
+  }).addTo(map);
+
+  // 添加标记
+  const markers = [];
+  cityScores.forEach(({ city, score, data }) => {
+    if (!data) {
+      // 无数据，小灰点
+      const circle = L.circleMarker([city.lat, city.lon], {
+        radius: 3,
+        color: '#444',
+        opacity: 0.3,
+        fillOpacity: 0.3,
+        interactive: false,
+      }).addTo(map);
+      markers.push(circle);
+      return;
+    }
+
+    const color = scoreToColor(score);
+    const radius = scoreToSize(score);
+    const labelEmoji = scoreToLabel(score);
+    const popupHtml = buildPopupHTML(city, score, data, eventType);
+
+    // 彩色圆点
+    const circle = L.circleMarker([city.lat, city.lon], {
+      radius: radius,
+      color: color,
+      weight: 2,
+      opacity: 0.9,
+      fillColor: color,
+      fillOpacity: 0.7,
+    }).addTo(map);
+
+    circle.bindPopup(popupHtml, {
+      className: 'map-city-popup',
+      closeButton: true,
+      offset: [0, -radius],
+    });
+
+    // 分数标签（对于高分的城市显示）
+    if (score >= 80) {
+      const label = L.marker([city.lat - 0.3, city.lon], {
+        icon: L.divIcon({
+          className: 'city-marker-label',
+          html: `${labelEmoji}${score}`,
+          iconSize: [50, 14],
+          iconAnchor: [25, 7],
+        }),
+        interactive: false,
+      }).addTo(map);
+      markers.push(circle, label);
+    } else {
+      markers.push(circle);
+    }
+  });
+
+  mapState.map = map;
+  mapState.markers = markers;
+
+  // 等瓦片加载完成后再调整大小
+  setTimeout(() => map.invalidateSize(), 200);
+  setTimeout(() => map.invalidateSize(), 1000);
+}
+
+// 切换地图 tab
+function handleMapTab() {
+  const $container = document.getElementById('mapPreviewContainer');
+  const $predictions = document.getElementById('predictions');
+  $predictions.style.display = 'none';
+  $container.style.display = 'block';
+
+  if (!mapState.initialized) {
+    mapState.initialized = true;
+    // 绑定事件
+    const $eventSelect = document.getElementById('mapEventSelect');
+    const $daySelect = document.getElementById('mapDaySelect');
+    $eventSelect.addEventListener('change', () => {
+      mapState.eventType = $eventSelect.value;
+      renderMap(mapState.dayIdx, mapState.eventType);
+    });
+    $daySelect.addEventListener('change', () => {
+      mapState.dayIdx = parseInt($daySelect.value);
+      renderMap(mapState.dayIdx, mapState.eventType);
+    });
+    renderMap(mapState.dayIdx, mapState.eventType);
+  } else if (mapState.map) {
+    setTimeout(() => mapState.map.invalidateSize(), 100);
+  }
+}
+
+// 切换回预测 tab
+function handlePredictTab() {
+  const $container = document.getElementById('mapPreviewContainer');
+  const $predictions = document.getElementById('predictions');
+  if ($container) $container.style.display = 'none';
+  if ($predictions) $predictions.style.display = 'block';
+}
+
+// === 扩展 tab 点击处理 ===
+// 在 handleTabClick 基础上加地图分支
+const _origHandleTabClick = handleTabClick;
+handleTabClick = function(e) {
+  const btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  const tab = btn.dataset.tab;
+  if (tab === 'map') {
+    // 切换地图 tab
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    handleMapTab();
+    return;
+  }
+  // 普通 tab
+  handlePredictTab();
+  _origHandleTabClick(e);
+};
