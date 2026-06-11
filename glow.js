@@ -1312,23 +1312,24 @@ function calcProbability(d, type, trendData) {
   if (v < 1500) prob -= 20;  // 浓雾 → 根本看不见
   else if (v < 3000) prob -= 10;
 
-  // === 8. 趋势评分：云量变化方向 ===
+  // === 8. 趋势评分：扩展窗口 + 滑动平均后的精细化判断 ===
   if (trendData && trendData.cloudTrend != null) {
     if (type === 'morning') {
-      // 朝霞：日出前云量增多是好事（云正在聚集）
-      if (trendData.cloudTrend > 12) prob += 10;
-      else if (trendData.cloudTrend > 6) prob += 5;
-      else if (trendData.cloudTrend < -18) prob -= 10;
-      else if (trendData.cloudTrend < -8) prob -= 4;
+      // 朝霞：日出前云量持续下降 → 预示清晨通透（preEventTrend < 0 且幅度适中）
+      if (trendData.preEventTrend < -3 && trendData.preEventTrend > -15) prob += 12;
+      else if (trendData.preEventTrend < -1 && trendData.preEventTrend >= -3) prob += 6;
+      // 日出前云量暴增 → 可能云层过厚遮挡
+      else if (trendData.preEventTrend > 15) prob -= 8;
+      // 日出后低云快速消散 → 地平线变清晰
+      if (trendData.lowCloudTrend < -5 && cloudLow < 40) prob += 6;
     } else {
-      // 晚霞：希望云量稳定或略减
-      if (Math.abs(trendData.cloudTrend) < 10) prob += 6;
-      else if (trendData.cloudTrend > 20) prob -= 6;  // 云越积越厚
-      else if (trendData.cloudTrend < -22) prob -= 10; // 云消散太快
-    }
-    // 低云消散趋势 → 加分
-    if (trendData.lowCloudTrend !== undefined && trendData.lowCloudTrend < -8 && cloudLow < 35) {
-      prob += 6;
+      // 晚霞：日落前云量稳定或缓慢增厚 → 预示晚霞延续
+      if (Math.abs(trendData.preEventTrend) < 5) prob += 8;        // 稳定
+      else if (trendData.preEventTrend > 0 && trendData.preEventTrend <= 8) prob += 5; // 缓慢增厚
+      // 高层云在日落后继续增厚 → 晚霞可能延续更久
+      if (trendData.highTrend > 2 && trendData.highTrend < 12) prob += 6;
+      // 云量暴增或暴减都不利
+      else if (Math.abs(trendData.preEventTrend) > 20) prob -= 8;
     }
   }
 
@@ -1561,6 +1562,9 @@ function buildCloudTrendChart(data, di, type) {
 
 // === 趋势分析：提取日出/日落前后云量变化趋势 ===
 // 返回 { cloudTrend, lowCloudTrend } — 正值表示云量在增多
+// === 云层趋势分析（扩展窗口 + 滑动平均） ===
+// data: 完整 forecast data, di: day index, type: 'morning'|'evening'
+// 返回趋势对象供 calcProbability 使用
 function getTrendData(data, di, type) {
   const daily = data.daily;
   const hourly = data.hourly;
@@ -1569,8 +1573,8 @@ function getTrendData(data, di, type) {
 
   const eventISO = type === 'morning' ? daily.sunrise[di] : daily.sunset[di];
   if (!eventISO) return null;
-  const eventDate = new Date(eventISO);
-  const eventHour = eventDate.getHours();
+  const eventTime = new Date(eventISO);
+  const eventHour = eventTime.getHours() + eventTime.getMinutes() / 60;
 
   // 找到该日期的所有逐时索引
   const indices = hourly.time
@@ -1580,73 +1584,93 @@ function getTrendData(data, di, type) {
 
   if (indices.length < 3) return null;
 
-  // 朝霞：关注日出前 1.5h → 日出前 0.5h 的变化
-  // 晚霞：关注日落前 1.5h → 日落时刻的变化
-  let beforeWindow, afterWindow;
+  // 扩展时间窗口：
+  // 朝霞：日出前 3h → 日出后 1h（检测云量是否在日出前持续下降→清晨通透）
+  // 晚霞：日落前 2h → 日落后 2h（检测高层云是否缓慢增厚→晚霞延续）
+  let windowStart, windowEnd;
   if (type === 'morning') {
-    beforeWindow = { start: eventHour - 1.5, end: eventHour - 0.5 };
-    // 也看日出前 → 日出后的变化（云是否持续增多）
-    afterWindow = { start: eventHour - 1, end: eventHour + 0.5 };
+    windowStart = eventHour - 3;
+    windowEnd = eventHour + 1;
   } else {
-    beforeWindow = { start: eventHour - 1.5, end: eventHour - 0.5 };
-    afterWindow = { start: eventHour - 1, end: eventHour + 0.5 };
+    windowStart = eventHour - 2;
+    windowEnd = eventHour + 2;
   }
 
   // 提取窗口内的数据点
-  const windowData = indices.filter(x => {
+  const windowPoints = indices.filter(x => {
     const h = new Date(x.t).getHours() + new Date(x.t).getMinutes() / 60;
-    return h >= beforeWindow.start && h <= beforeWindow.end;
+    return h >= windowStart && h <= windowEnd;
   }).map(x => ({
+    time: new Date(x.t),
     cloudCover: hourly.cloud_cover[x.i],
     cloudLow: hourly.cloud_cover_low[x.i],
     cloudMid: hourly.cloud_cover_mid[x.i],
     cloudHigh: hourly.cloud_cover_high[x.i],
   }));
 
-  // 扩展窗口（含事件后）
-  const windowDataFull = indices.filter(x => {
-    const h = new Date(x.t).getHours() + new Date(x.t).getMinutes() / 60;
-    return h >= afterWindow.start && h <= afterWindow.end;
-  }).map(x => ({
-    cloudCover: hourly.cloud_cover[x.i],
-    cloudLow: hourly.cloud_cover_low[x.i],
-  }));
+  if (windowPoints.length < 3) return null;
 
-  if (windowData.length < 2 && windowDataFull.length < 2) return null;
-
-  // 计算总云量变化趋势（按第一个和最后一个数据点之差）
-  let cloudTrend = 0;
-  if (windowData.length >= 2) {
-    const first = windowData[0].cloudCover;
-    const last = windowData[windowData.length - 1].cloudCover;
-    cloudTrend = last - first;
-  } else if (windowDataFull.length >= 2) {
-    const first = windowDataFull[0].cloudCover;
-    const last = windowDataFull[windowDataFull.length - 1].cloudCover;
-    cloudTrend = last - first;
+  // 滑动平均平滑（窗口大小=3）
+  function smooth(arr, winSize = 3) {
+    if (arr.length < winSize) return arr;
+    const result = [];
+    for (let i = 0; i < arr.length; i++) {
+      const start = Math.max(0, i - Math.floor(winSize / 2));
+      const end = Math.min(arr.length, i + Math.ceil(winSize / 2));
+      let sum = 0;
+      for (let j = start; j < end; j++) sum += arr[j];
+      result.push(sum / (end - start));
+    }
+    return result;
   }
 
-  // 低云变化趋势
-  let lowCloudTrend = 0;
-  if (windowData.length >= 2) {
-    const first = windowData[0].cloudLow;
-    const last = windowData[windowData.length - 1].cloudLow;
-    lowCloudTrend = last - first;
+  const rawCloud = windowPoints.map(p => p.cloudCover);
+  const rawLow = windowPoints.map(p => p.cloudLow);
+  const rawMid = windowPoints.map(p => p.cloudMid);
+  const rawHigh = windowPoints.map(p => p.cloudHigh);
+
+  const smCloud = smooth(rawCloud);
+  const smLow = smooth(rawLow);
+  const smMid = smooth(rawMid);
+  const smHigh = smooth(rawHigh);
+
+  // 计算趋势：用线性回归斜率代替首尾差分（更抗噪）
+  function linearSlope(values) {
+    const n = values.length;
+    if (n < 2) return 0;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    for (let i = 0; i < n; i++) {
+      sumX += i;
+      sumY += values[i];
+      sumXY += i * values[i];
+      sumX2 += i * i;
+    }
+    return (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
   }
 
-  // 中高层云趋势（分别看）
-  let midTrend = 0, highTrend = 0;
-  if (windowData.length >= 2) {
-    midTrend = windowData[windowData.length - 1].cloudMid - windowData[0].cloudMid;
-    highTrend = windowData[windowData.length - 1].cloudHigh - windowData[0].cloudHigh;
+  const cloudTrend = linearSlope(smCloud);
+  const lowCloudTrend = linearSlope(smLow);
+  const midTrend = linearSlope(smMid);
+  const highTrend = linearSlope(smHigh);
+
+  // 额外指标：事件前后分段趋势（用于精细化评分）
+  const eventIdx = windowPoints.findIndex(p => p.time >= eventTime);
+  let preEventTrend = 0, postEventTrend = 0;
+  if (eventIdx > 2) {
+    preEventTrend = linearSlope(smCloud.slice(0, eventIdx));
+  }
+  if (eventIdx >= 0 && eventIdx < smCloud.length - 2) {
+    postEventTrend = linearSlope(smCloud.slice(eventIdx));
   }
 
   return {
-    cloudTrend,
-    lowCloudTrend,
-    midTrend,
-    highTrend,
-    windowSize: windowData.length,
+    cloudTrend,           // 整体云量趋势（°/h）
+    lowCloudTrend,        // 低云趋势
+    midTrend,             // 中层云趋势
+    highTrend,            // 高层云趋势
+    preEventTrend,        // 事件前趋势（朝霞=日出前，晚霞=日落前）
+    postEventTrend,       // 事件后趋势
+    windowSize: windowPoints.length,
   };
 }
 
