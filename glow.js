@@ -1182,6 +1182,50 @@ function _calcCloudContinuity(cloudMid, cloudHigh) {
   else return -2;               // 差异悬殊 → 破碎
 }
 
+// === 太阳高度角季节性修正 ===
+// 原理：日出/日落时太阳高度角决定光线穿过大气的路径长度
+//       冬季太阳高度角低 → 路径长 → 散射更强 → 霞光更易出现（+权重）
+//       夏季太阳高度角高 → 路径短 → 散射较弱 → 霞光概率略降（-权重）
+// 参数：lat=纬度(°), month=月份(1-12), type='morning'|'evening'
+// 返回：-5 ~ +5 的修正值
+function _calcSolarElevationCorrection(lat, month, type) {
+  // 简化模型：用月份近似太阳赤纬
+  // 夏至(6月) δ≈+23.4°, 冬至(12月) δ≈-23.4°
+  const dayOfYear = (month - 1) * 30 + 15; // 每月取月中
+  const declination = 23.44 * Math.sin((284 + dayOfYear) / 365 * 2 * Math.PI);
+
+  // 日出/日落时太阳高度角 ≈ 0°（地平线），但实际有效高度角受大气折射影响
+  // 这里用"等效路径长度因子"代替精确计算：
+  // 路径长度  1/sin(elevation)，elevation 越低路径越长
+  // 冬季 |declination| 大 → 同纬度下日出方位角更偏南/北 → 有效路径更长
+
+  const absLat = Math.abs(lat);
+  // 北半球冬季(12-2月)和南半球夏季(6-8月)是霞光高发期
+  let seasonalFactor = 0;
+  if (lat >= 0) {
+    // 北半球：冬季加分，夏季减分
+    if (month >= 11 || month <= 2) seasonalFactor = 4;   // 冬
+    else if (month >= 3 && month <= 5) seasonalFactor = 1; // 春
+    else if (month >= 9 && month <= 10) seasonalFactor = 2; // 秋
+    else seasonalFactor = -3;                             // 夏
+  } else {
+    // 南半球：季节相反
+    if (month >= 5 && month <= 8) seasonalFactor = 4;     // 冬
+    else if (month >= 9 && month <= 11) seasonalFactor = 1; // 春
+    else if (month >= 3 && month <= 4) seasonalFactor = 2;  // 秋
+    else seasonalFactor = -3;                              // 夏
+  }
+
+  // 高纬度地区季节效应更显著
+  if (absLat > 40) seasonalFactor *= 1.3;
+  else if (absLat < 20) seasonalFactor *= 0.6; // 低纬度季节差异小
+
+  // 晚霞比朝霞对太阳高度角更敏感（傍晚大气更稳定）
+  if (type === 'evening') seasonalFactor *= 1.1;
+
+  return Math.round(Math.max(-5, Math.min(5, seasonalFactor)));
+}
+
 // === 评分算法 v3（多模型集成 + 趋势感知）===
 // 概率：霞光出现的可能性（%），主要看遮挡因素
 // 质量：霞光色彩壮观度（%），主要看散射条件
@@ -1198,6 +1242,13 @@ function calcProbability(d, type, trendData) {
   if (aodProxy > 0.6) prob -= 22;      // 严重雾霾/沙尘 → 霞光概率大幅降低
   else if (aodProxy > 0.4) prob -= 14;  // 明显浑浊
   else if (aodProxy > 0.25) prob -= 6;  // 轻度浑浊
+
+  // === 0c. 太阳高度角季节性修正 ===
+  if (state.lat != null) {
+    const month = new Date().getMonth() + 1;
+    const solarCorrection = _calcSolarElevationCorrection(state.lat, month, type);
+    prob += solarCorrection;
+  }
 
   // === 0b. 云层垂直结构细化 ===
   const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
@@ -1300,6 +1351,13 @@ function calcQuality(d, type) {
   else if (aodProxy > 0.4) quality -= 18;  // 明显浑浊
   else if (aodProxy > 0.25) quality -= 8;  // 轻度浑浊
   else if (aodProxy < 0.1 && cloudMH >= 10) quality += 6; // 极致通透+有云=最佳条件
+
+  // === 0c. 太阳高度角季节性修正 ===
+  if (state.lat != null) {
+    const month = new Date().getMonth() + 1;
+    const solarCorrection = _calcSolarElevationCorrection(state.lat, month, type);
+    quality += solarCorrection * 0.8; // 质量维度权重略低于概率维度
+  }
 
   // === 0b. 云层垂直结构细化 ===
   // 中高层云连续性评分（两层云量接近 → 连续反射面 → 加分）
