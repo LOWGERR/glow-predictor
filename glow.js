@@ -1127,6 +1127,32 @@ function extractHourlyData(data, idx) {
   };
 }
 
+// === AOD 通透度代理（基于能见度+湿度+低云的联合推断） ===
+// 返回 0-1 的等效气溶胶光学厚度指数：0=极致通透，1=严重雾霾/沙尘
+function _calcAODProxy(visibility, humidity, cloudLow) {
+  // 能见度是 AOD 的最直接代理（单位：米）
+  let aod = 0;
+  if (visibility < 1000)       aod = 0.85;   // 浓雾/重度霾
+  else if (visibility < 2000)  aod = 0.65;   // 重度霾
+  else if (visibility < 3500)  aod = 0.45;   // 中度霾
+  else if (visibility < 5000)  aod = 0.30;   // 轻度霾
+  else if (visibility < 8000)  aod = 0.18;   // 轻微浑浊
+  else if (visibility < 12000) aod = 0.10;   // 较通透
+  else if (visibility < 18000) aod = 0.05;   // 通透
+  else                         aod = 0.02;   // 极致通透
+
+  // 湿度修正：高湿会放大气溶胶的散射效应（湿增长）
+  if (humidity > 85)      aod = Math.min(1, aod * 1.3);
+  else if (humidity > 70) aod = Math.min(1, aod * 1.15);
+  else if (humidity < 25) aod = Math.max(0, aod * 0.85); // 干燥时气溶胶影响减弱
+
+  // 低云修正：低云本身不是气溶胶，但低云多时大气边界层内颗粒物浓度通常更高
+  if (cloudLow > 60)      aod = Math.min(1, aod + 0.08);
+  else if (cloudLow > 30) aod = Math.min(1, aod + 0.03);
+
+  return Math.max(0, Math.min(1, aod));
+}
+
 // === 评分算法 v3（多模型集成 + 趋势感知）===
 // 概率：霞光出现的可能性（%），主要看遮挡因素
 // 质量：霞光色彩壮观度（%），主要看散射条件
@@ -1137,6 +1163,12 @@ function calcProbability(d, type, trendData) {
   const cloudMH = Math.max(cloudMid, cloudHigh);
   const h = d.humidity;
   const v = d.visibility;
+
+  // === 0. AOD 通透度代理（能见度+湿度+低云联合推断） ===
+  const aodProxy = _calcAODProxy(v, h, cloudLow);
+  if (aodProxy > 0.6) prob -= 22;      // 严重雾霾/沙尘 → 霞光概率大幅降低
+  else if (aodProxy > 0.4) prob -= 14;  // 明显浑浊
+  else if (aodProxy > 0.25) prob -= 6;  // 轻度浑浊
 
   // === 1. 中高层云评分（精细非线性曲线）===
   if (cloudMH < 3)  prob -= 42;
@@ -1220,6 +1252,15 @@ function calcQuality(d, type) {
   const cloudMH = Math.max(cloudMid, cloudHigh);
   const h = d.humidity;
   const v = d.visibility;
+
+  // === 0. AOD 通透度代理（基于能见度+湿度+低云的联合推断） ===
+  // 等效 AOD 指数：值越高 = 大气越浑浊 = 霞光色彩越灰暗
+  // 能见度 > 15km 且湿度 < 60% → 极低气溶胶；能见度 < 3km → 高气溶胶
+  const aodProxy = _calcAODProxy(v, h, cloudLow);
+  if (aodProxy > 0.6) quality -= 28;      // 严重雾霾/沙尘
+  else if (aodProxy > 0.4) quality -= 18;  // 明显浑浊
+  else if (aodProxy > 0.25) quality -= 8;  // 轻度浑浊
+  else if (aodProxy < 0.1 && cloudMH >= 10) quality += 6; // 极致通透+有云=最佳条件
 
   // === 1. 中高层云：色彩载体（精细非线性曲线） ===
   // 核心区间拉得更宽，让云量在 10-70% 都有较好表现
@@ -1528,6 +1569,14 @@ function buildTips(d, type) {
   const tips = [];
   const cloudMH = Math.max(d.cloudMid, d.cloudHigh);
   const cloudLow = d.cloudLow;
+
+  // === AOD 通透度提示 ===
+  const aodProxy = _calcAODProxy(d.visibility, d.humidity, d.cloudLow);
+  if (aodProxy > 0.5) {
+    tips.push('🌫️ <strong>大气浑浊度高</strong>（等效 AOD ≈ ' + aodProxy.toFixed(2) + '），霞光色彩可能偏灰暗，建议后期加强饱和度。');
+  } else if (aodProxy < 0.1 && cloudMH >= 10) {
+    tips.unshift('🎯 <strong>极致通透</strong>——空气洁净度极佳 + 云层条件良好，大概率出大片！');
+  }
 
   if (cloudMH >= 15 && cloudMH <= 65) {
     tips.push('✨ <strong>最佳云层条件</strong>——中高层云量适中，霞光色彩层次丰富。');
