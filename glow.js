@@ -695,35 +695,19 @@ function bearing(lat1, lon1, lat2, lon2) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
-// === 地图内搜索（高德 JS API — AutoComplete + PlaceSearch）===
-let _autoComplete = null;
-let _placeSearch = null;
+// === 地图内搜索（REST API + 自定义下拉面板）===
+let _searchTimer = null;
 
 function initMapSearch() {
-  if (_autoComplete) return; // 已初始化
-
-  // 输入提示（AutoComplete）
-  _autoComplete = new AMap.AutoComplete({
-    input: 'mapSearchInput',
-    city: '全国',
-    citylimit: false,
-    extensions: 'all',
-    outPutDirAuto: true  // 自动调整下拉面板位置
-  });
-
-  // 点击下拉项时直接选中
-  _autoComplete.on('select', (e) => {
-    const poi = e.poi;
-    if (!poi || !poi.location) return;
-    const [lon, lat] = poi.location.split(',').map(Number);
-    _mapLat = lat; _mapLon = lon;
-    if (_mapInstance) {
-      _mapInstance.setCenter([lon, lat]);
-      _mapInstance.setZoom(16);
-      placeMarker(lat, lon);
-      updateMapCoordsLabel();
+  // 输入时防抖搜索
+  $mapSearchInput.addEventListener('input', () => {
+    clearTimeout(_searchTimer);
+    const keyword = $mapSearchInput.value.trim();
+    if (keyword.length < 2) {
+      $mapSearchResults.classList.remove('show');
+      return;
     }
-    $mapSearchResults.classList.remove('show');
+    _searchTimer = setTimeout(() => doAutoSearch(keyword), 300);
   });
 
   // 回车键触发精确 POI 搜索
@@ -735,60 +719,80 @@ function initMapSearch() {
   });
 }
 
+// 输入提示搜索（使用高德 REST API tips 接口）
+async function doAutoSearch(keyword) {
+  try {
+    const res = await fetch(
+      `https://restapi.amap.com/v3/assistant/inputtips?key=${AMAP_KEY}&keywords=${encodeURIComponent(keyword)}&datatype=all`
+    );
+    const data = await res.json();
+    if (data.status !== '1' || !data.tips || data.tips.length === 0) {
+      $mapSearchResults.classList.remove('show');
+      return;
+    }
+    renderSearchResults(data.tips, true);
+  } catch(e) {
+    console.warn('输入提示搜索失败', e);
+  }
+}
+
+// 精确 POI 搜索
 async function doPlaceSearch(keyword) {
   if (!keyword) return;
   $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--text-dim)">搜索中…</div>';
   $mapSearchResults.classList.add('show');
 
   try {
-    const results = await new Promise((resolve, reject) => {
-      if (!_placeSearch) {
-        _placeSearch = new AMap.PlaceSearch({
-          pageSize: 10,
-          pageIndex: 1,
-          city: '全国',
-          citylimit: false,
-          extensions: 'all'
-        });
-      }
-      _placeSearch.search(keyword, (status, result) => {
-        if (status === 'complete' && result.info === 'OK' && result.poiList && result.poiList.pois.length > 0) {
-          resolve(result.poiList.pois);
-        } else {
-          reject(new Error('未找到地点'));
-        }
-      });
-    });
-
-    $mapSearchResults.innerHTML = results.map((p, i) => {
-      const [lon, lat] = p.location.split(',').map(Number);
-      const addr = p.address || p.district || '';
-      return `<div class="result-item" data-idx="${i}">
-        <div class="result-name">${p.name}</div>
-        <div class="result-detail">${addr} · ${lat.toFixed(4)}, ${lon.toFixed(4)}</div>
-      </div>`;
-    }).join('');
-
-    $mapSearchResults.querySelectorAll('.result-item').forEach(el => {
-      el.addEventListener('click', () => {
-        const idx = +el.dataset.idx;
-        const p = results[idx];
-        if (!p) return;
-        const [lon, lat] = p.location.split(',').map(Number);
-        _mapLat = lat; _mapLon = lon;
-        if (_mapInstance) {
-          _mapInstance.setCenter([lon, lat]);
-          _mapInstance.setZoom(16);
-          placeMarker(lat, lon);
-          updateMapCoordsLabel();
-        }
-        $mapSearchResults.classList.remove('show');
-        $mapSearchInput.value = '';
-      });
-    });
+    const res = await fetch(
+      `${AMAP_SEARCH_URL}?key=${AMAP_KEY}&keywords=${encodeURIComponent(keyword)}&offset=10&extensions=all`
+    );
+    const data = await res.json();
+    if (data.status !== '1' || !data.pois || data.pois.length === 0) {
+      $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--bad)">未找到地点，请尝试其他关键词</div>';
+      return;
+    }
+    renderSearchResults(data.pois, false);
   } catch(e) {
-    $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--bad)">未找到地点，请尝试其他关键词</div>';
+    $mapSearchResults.innerHTML = '<div class="result-item" style="color:var(--bad)">搜索失败，请重试</div>';
   }
+}
+
+// 渲染搜索结果（统一处理 inputtips 和 pois）
+function renderSearchResults(items, isTips) {
+  $mapSearchResults.innerHTML = items.map((p, i) => {
+    const name = p.name || p.district || '';
+    const district = p.district || p.address || '';
+    const location = p.location || '';
+    let lat = 0, lon = 0;
+    if (location) {
+      const parts = location.split(',').map(Number);
+      lon = parts[0]; lat = parts[1];
+    }
+    return `<div class="result-item" data-idx="${i}">
+      <div class="result-name">${name}</div>
+      <div class="result-detail">${district}${lat ? ' · ' + lat.toFixed(4) + ', ' + lon.toFixed(4) : ''}</div>
+    </div>`;
+  }).join('');
+
+  $mapSearchResults.classList.add('show');
+
+  $mapSearchResults.querySelectorAll('.result-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = +el.dataset.idx;
+      const p = items[idx];
+      if (!p || !p.location) return;
+      const [lon, lat] = p.location.split(',').map(Number);
+      _mapLat = lat; _mapLon = lon;
+      if (_mapInstance) {
+        _mapInstance.setCenter([lon, lat]);
+        _mapInstance.setZoom(16);
+        placeMarker(lat, lon);
+        updateMapCoordsLabel();
+      }
+      $mapSearchResults.classList.remove('show');
+      $mapSearchInput.value = '';
+    });
+  });
 }
 
 // 兼容旧版 mapSearch 调用
