@@ -1744,6 +1744,40 @@ function calcScore(d, type, trendData) {
   return Math.max(0, Math.min(100, score));
 }
 
+// === 一键分享预测卡片 ===
+async function sharePrediction(score, type, timeRange, verdictText) {
+  const typeLabel = type === 'morning' ? '朝霞' : '晚霞';
+  const locName = state.name || '当前位置';
+  const dateStr = state.forecastData?.daily?.time[state.activeTab] || '';
+  const dateLabel = dateStr ? new Date(dateStr).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) : '';
+
+  const text = `🌅 ${typeLabel}预测 · ${locName}\n📅 ${dateLabel}\n⭐ 综合评分：${score}/100\n💬 ${verdictText}\n⏰ 时段：${timeRange}\n\n数据来源：Open-Meteo ECMWF+GFS`;
+
+  // 优先使用原生分享（iOS Safari / Android Chrome）
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: `${typeLabel}预测 · ${score}/100`,
+        text: text,
+        url: window.location.href
+      });
+      return;
+    } catch(e) {
+      if (e.name === 'AbortError') return; // 用户取消
+      // 降级到剪贴板
+    }
+  }
+
+  // 降级：复制到剪贴板
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('✅ 预测信息已复制到剪贴板');
+  } catch(e) {
+    // 最终降级：prompt 让用户手动复制
+    prompt('请长按复制以下预测信息：', text);
+  }
+}
+
 // === 摄影建议 ===
 function buildTips(d, type) {
   const tips = [];
@@ -1846,6 +1880,7 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
     { min: 0,  text: '😴 无烧 — 建议休息', emoji: '😴' },
   ];
   const verdict = verdictMap.find(v => score >= v.min);
+  const verdictText = verdict ? verdict.text : '—';
 
   // 概率与质量的文字评级
   const probDesc = prob >= 75 ? '✨ 较高' : prob >= 50 ? '中等' : prob >= 25 ? '偏低' : '极低';
@@ -1919,6 +1954,7 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
       ${tips ? `<div class="card-tips">${tips}</div>` : ''}
       ${chartSvg ? `<div class="card-section-label">📈 云层趋势</div>${chartSvg}` : ''}
       <button class="nearby-btn" onclick="openNearbySearch('${type}')">📷 附近摄影点</button>
+      <button class="share-btn" onclick="sharePrediction(${score}, '${type}', '${timeRange}', '${verdictText}')">📤 分享预测</button>
       <div class="data-source">🌐 多模型集成 (${getSourceLabel()})</div>
     </div>
   </div>`;
