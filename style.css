@@ -33,6 +33,22 @@ body {
   padding: 12px 14px 40px;
 }
 
+/* 页面入场动画 */
+.header, .weather-card, .tab-bar, .prediction-card, .legend {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: fadeSlideUp 0.5s ease forwards;
+}
+.weather-card { animation-delay: 0.08s; }
+.tab-bar { animation-delay: 0.16s; }
+.prediction-card:nth-child(1) { animation-delay: 0.24s; }
+.prediction-card:nth-child(2) { animation-delay: 0.32s; }
+.legend { animation-delay: 0.40s; }
+
+@keyframes fadeSlideUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* === 头部 === */
 .header {
   padding: 16px 4px 12px;
@@ -167,10 +183,17 @@ body {
   text-align: center;
 }
 .wd-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   font-size: 0.68rem;
   color: var(--text-dim);
   margin-bottom: 2px;
+}
+.wd-label span:first-child {
+  font-size: 0.85rem;
+  line-height: 1;
 }
 .wd-val {
   display: block;
@@ -468,31 +491,37 @@ body {
 }
 .card-tips strong { color: var(--accent); }
 
-/* === 图例 === */
+/* === 图例（精简版） === */
 .legend {
   margin-top: 16px;
-  padding: 14px 16px;
+  padding: 10px 14px;
   background: var(--card-bg);
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid var(--border);
 }
-.legend h3 { font-size: 0.85rem; margin-bottom: 8px; }
+.legend h3 { font-size: 0.78rem; margin-bottom: 6px; color: var(--text-dim); }
 .legend-items {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 12px;
+  gap: 4px 10px;
 }
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 0.72rem;
-  color: #aaa;
+  gap: 4px;
+  font-size: 0.68rem;
+  color: #999;
 }
 .dot {
-  width: 10px; height: 10px;
+  width: 8px; height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+.legend-trend {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  margin-top: 6px;
+  opacity: 0.7;
 }
 
 /* === 页脚 === */
