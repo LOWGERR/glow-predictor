@@ -787,127 +787,51 @@ body.no-scroll {
 }
 
 
-/* === 地图预览 === */
-.map-tab-btn {
-  font-size: 0.75rem !important;
-  padding: 4px 8px !important;
+/* === 预测卡片内嵌地图 === */
+.local-map-wrapper {
+  margin: 8px -12px -8px;
+  padding: 8px 12px 0;
+  border-top: 1px solid rgba(255,255,255,0.08);
 }
-
-.map-preview-container {
-  margin-top: 10px;
-}
-
-.map-controls {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-
-.map-legend-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.map-select {
-  background: var(--card-bg);
-  color: var(--text);
-  border: 1px solid var(--border);
+.local-map-embed {
+  width: 100%;
+  min-height: 200px;
   border-radius: 8px;
-  padding: 4px 10px;
-  font-size: 0.78rem;
-  cursor: pointer;
-  outline: none;
+  overflow: hidden;
 }
-
+.local-map-embed .leaflet-container {
+  background: #1a1a2e;
+  border-radius: 8px;
+}
+.local-map-container {
+  width: 100%;
+  min-height: 200px;
+}
 .map-loading {
   text-align: center;
-  padding: 20px;
-  color: var(--text-dim);
-  font-size: 0.85rem;
+  padding: 40px 0;
+  color: #888;
+  font-size: 13px;
 }
-
-.map-preview {
-  width: 100%;
-  height: 460px;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  background: #1a1a2e;
+.map-empty {
+  text-align: center;
+  padding: 40px 0;
+  color: #666;
+  font-size: 12px;
 }
-
-.map-preview .leaflet-container {
-  background: #1a1a2e;
-}
-
-.map-legend-bar {
+.local-map-legend {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  font-size: 0.72rem;
-  color: var(--text-dim);
+  gap: 6px;
+  font-size: 10px;
+  color: #888;
+  padding: 6px 4px 0;
+  flex-wrap: wrap;
 }
-
-.legend-gradient {
-  flex: 1;
-  height: 10px;
-  border-radius: 5px;
-  background: linear-gradient(to right, 
-    #4a148c 0%,
-    #1a237e 12%,
-    #0d47a1 25%,
-    #00c853 40%,
-    #ffeb3b 55%,
-    #ff9800 70%,
-    #ff3d00 85%,
-    #d50000 100%
-  );
-}
-
-/* 地图弹窗（Leaflet popup 自定义） */
-.map-city-popup .leaflet-popup-content-wrapper {
-  background: #1a1a35;
-  color: #e8e8ec;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-}
-.map-city-popup .leaflet-popup-tip {
-  background: #1a1a35;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-.popup-city-name {
-  font-size: 1rem;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-.popup-city-score {
-  font-size: 1.6rem;
-  font-weight: 800;
-  margin: 2px 0;
-}
-.popup-city-detail {
-  font-size: 0.75rem;
-  color: #aaa;
-  line-height: 1.6;
-}
-.popup-city-detail span {
+.lg-dot {
   display: inline-block;
-  margin-right: 8px;
-}
-
-/* 地图标记圆形样式 */
-.city-marker-label {
-  font-size: 0.6rem;
-  font-weight: 600;
-  text-align: center;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-  pointer-events: none;
-  line-height: 1;
-  color: #fff;
-  white-space: nowrap;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
 }

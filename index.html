@@ -89,35 +89,10 @@
     <button class="tab-btn active" data-tab="0">今天</button>
     <button class="tab-btn" data-tab="1">明天</button>
     <button class="tab-btn" data-tab="2">后天</button>
-    <button class="tab-btn map-tab-btn" data-tab="map" id="mapTabBtn">🗺️ 地图</button>
   </div>
-  <div class="tab-date" id="tabDate"></div>
 
   <!-- 预测内容 -->
   <div class="predictions" id="predictions"></div>
-
-  <!-- 地图容器（地图 tab 时显示） -->
-  <div class="map-preview-container" id="mapPreviewContainer" style="display:none">
-    <div class="map-controls">
-      <span class="map-legend-title">🔥 晚霞鲜艳度地图</span>
-      <select id="mapEventSelect" class="map-select">
-        <option value="sunset">🌇 晚霞</option>
-        <option value="sunrise">🌅 朝霞</option>
-      </select>
-      <select id="mapDaySelect" class="map-select">
-        <option value="0">今天</option>
-        <option value="1">明天</option>
-        <option value="2">后天</option>
-      </select>
-    </div>
-    <div class="map-loading" id="mapLoading">加载地图数据…</div>
-    <div id="mapPreview" class="map-preview"></div>
-    <div class="map-legend-bar">
-      <span>😴 无烧</span>
-      <span class="legend-gradient"></span>
-      <span>🔥 大烧</span>
-    </div>
-  </div>
 
   <!-- 图例 -->
   <div class="legend">
