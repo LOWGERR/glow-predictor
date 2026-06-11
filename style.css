@@ -457,6 +457,7 @@ body {
   background: #1a1a2e;
   border-bottom: 1px solid #2a2a3e;
   flex-shrink: 0;
+  position: relative; /* AutoComplete 下拉面板需要相对定位锚点 */
 }
 .map-search-container input {
   flex: 1;
@@ -789,3 +790,7 @@ body.no-scroll {
 
 /* === 预测卡片内嵌地图 === */
 
+/* 高德 AutoComplete 下拉面板 z-index 提升（防止被地图弹窗遮挡） */
+.amap-sug-result {
+  z-index: 10000 !important;
+}

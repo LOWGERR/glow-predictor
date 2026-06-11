@@ -96,7 +96,7 @@ function bindDOM() {
   $mapConfirmBtn.addEventListener('click', confirmMapPick);
   $mapLocateBtn.addEventListener('click', locateOnMap);
   $mapSearchBtn.addEventListener('click', mapSearch);
-  $mapSearchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') mapSearch(); });
+  // keydown 事件由 initMapSearch() 统一处理，此处不重复绑定
 
   // 附近搜索弹窗
   const $nClose = document.getElementById('nearbyClose');
@@ -702,15 +702,16 @@ let _placeSearch = null;
 function initMapSearch() {
   if (_autoComplete) return; // 已初始化
 
-  // 输入提示
+  // 输入提示（AutoComplete）
   _autoComplete = new AMap.AutoComplete({
     input: 'mapSearchInput',
     city: '全国',
     citylimit: false,
-    extensions: 'all'
+    extensions: 'all',
+    outPutDirAuto: true  // 自动调整下拉面板位置
   });
 
-  // 点击下拉项时执行 POI 搜索
+  // 点击下拉项时直接选中
   _autoComplete.on('select', (e) => {
     const poi = e.poi;
     if (!poi || !poi.location) return;
