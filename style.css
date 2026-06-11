@@ -3,13 +3,13 @@
 
 :root {
   --bg: #0a0a14;
-  --card-bg: #13132a;
-  --card-bg2: #181830;
+  --card-bg: #111128;
+  --card-bg2: #1a1a38;
   --text: #e8e8ec;
   --text-dim: #8888a0;
   --accent: #ff9800;
   --accent2: #e040fb;
-  --border: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.08);
   --good: #4caf50;
   --bad: #ff4444;
   --warn: #ff9800;
@@ -35,7 +35,9 @@ body {
 
 /* === 头部 === */
 .header {
-  padding: 10px 4px 8px;
+  padding: 16px 4px 12px;
+  background: linear-gradient(180deg, rgba(255,152,0,0.06) 0%, transparent 100%);
+  border-radius: 0 0 20px 20px;
 }
 .header-top {
   display: flex;
@@ -201,6 +203,16 @@ body {
   background: rgba(255,255,255,0.03);
   border-radius: 8px;
   font-size: 0.75rem;
+}
+/* 蓝调时刻左侧蓝色色条 */
+.photo-hour-item:nth-child(1),
+.photo-hour-item:nth-child(4) {
+  border-left: 3px solid #64b5f6;
+}
+/* 黄金时刻左侧金色色条 */
+.photo-hour-item:nth-child(2),
+.photo-hour-item:nth-child(3) {
+  border-left: 3px solid #ffca28;
 }
 .ph-icon { font-size: 0.9rem; flex-shrink: 0; }
 .ph-label { color: var(--text-dim); flex-shrink: 0; }
