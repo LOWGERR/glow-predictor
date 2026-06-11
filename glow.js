@@ -1847,13 +1847,13 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
       <div class="score-row">
         <div class="dual-score">
           <div class="dual-item">
-            <div class="dual-circle" style="border-color:${probColor}; color:${probColor}">${prob}</div>
+            <div class="dual-circle" style="--pct:${prob};--circle-color:${probColor};color:${probColor}"><span>${prob}</span></div>
             <span class="dual-label">概率</span>
             <span class="dual-desc" style="color:${probColor}">${probDesc}</span>
           </div>
           <div class="dual-vs">×</div>
           <div class="dual-item">
-            <div class="dual-circle" style="border-color:${qualColor}; color:${qualColor}">${quality}</div>
+            <div class="dual-circle" style="--pct:${quality};--circle-color:${qualColor};color:${qualColor}"><span>${quality}</span></div>
             <span class="dual-label">质量</span>
             <span class="dual-desc" style="color:${qualColor}">${qualDesc}</span>
           </div>
@@ -1961,12 +1961,15 @@ function startCountdown(data) {
       if (diff < 3600000) {
         $countdownBar.innerHTML = `⏰ <strong>${nextEvent.type}</strong> 即将到来 · ${dayLabel} ${timeStr} · 还有 <strong>${formatDuration(diff)}</strong>`;
         $countdownBar.style.background = nextEvent.type.includes('日出') ? 'rgba(255,152,0,0.18)' : 'rgba(224,64,251,0.18)';
+        $countdownBar.classList.add('urgent');
       } else if (diff < 7200000) {
         $countdownBar.innerHTML = `📷 <strong>${nextEvent.type}</strong> 临近 · ${dayLabel} ${timeStr} · 还有 ${formatDuration(diff)}`;
         $countdownBar.style.background = nextEvent.type.includes('日出') ? 'rgba(255,152,0,0.1)' : 'rgba(224,64,251,0.1)';
+        $countdownBar.classList.remove('urgent');
       } else {
         $countdownBar.innerHTML = `📷 距离 <strong>${nextEvent.type}</strong> · ${dayLabel} ${timeStr} · ${formatDuration(diff)}`;
         $countdownBar.style.background = 'rgba(255,152,0,0.05)';
+        $countdownBar.classList.remove('urgent');
       }
     }
   };

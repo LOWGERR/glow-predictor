@@ -113,6 +113,25 @@ body {
   padding: 16px;
   margin-top: 10px;
   border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+/* 微光呼吸边框 */
+.weather-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg,
+    rgba(255,152,0,0.25),
+    rgba(224,64,251,0.18),
+    rgba(100,181,246,0.25));
+  z-index: -1;
+  animation: shimmer 4s ease-in-out infinite alternate;
+}
+@keyframes shimmer {
+  0% { opacity: 0.4; }
+  100% { opacity: 0.9; }
 }
 .weather-main {
   display: flex;
@@ -228,6 +247,14 @@ body {
   font-size: 0.82rem;
   color: var(--accent);
   font-weight: 500;
+  transition: all 0.3s ease;
+}
+.countdown-bar.urgent {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,152,0,0.15); }
+  50% { box-shadow: 0 0 16px 4px rgba(255,152,0,0.12); }
 }
 
 /* === 选项卡 === */
@@ -327,7 +354,24 @@ body {
   justify-content: center;
   font-weight: 700;
   font-size: 0.95rem;
-  border: 2.5px solid;
+  position: relative;
+  /* conic-gradient 进度环 */
+  background: conic-gradient(
+    var(--circle-color, var(--accent)) calc(var(--pct, 75) * 3.6deg),
+    rgba(255,255,255,0.06) 0deg
+  );
+}
+/* 内部遮罩形成环形 */
+.dual-circle::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--card-bg2);
+}
+.dual-circle span {
+  position: relative;
+  z-index: 1;
 }
 .dual-label {
   font-size: 0.55rem;
@@ -354,7 +398,24 @@ body {
   font-weight: 700;
   font-size: 1.25rem;
   flex-shrink: 0;
-  border: 3px solid;
+  position: relative;
+  /* conic-gradient 进度环 */
+  background: conic-gradient(
+    var(--circle-color, var(--accent)) calc(var(--pct, 50) * 3.6deg),
+    rgba(255,255,255,0.06) 0deg
+  );
+}
+/* 内部遮罩形成环形 */
+.score-circle::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--card-bg2);
+}
+.score-circle > div {
+  position: relative;
+  z-index: 1;
 }
 .score-circle .score-label {
   font-size: 0.55rem;
@@ -385,6 +446,11 @@ body {
   border-radius: 8px;
   font-size: 0.72rem;
   text-align: center;
+  transition: all 0.2s ease;
+}
+.factor:active {
+  transform: scale(0.96);
+  background: rgba(255,255,255,0.06);
 }
 .factor-name { display: block; color: var(--text-dim); margin-bottom: 1px; }
 .factor-val { font-weight: 600; }
