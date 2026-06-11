@@ -186,6 +186,26 @@ body {
 .sun-countdown { font-size: 0.7rem; color: var(--text-dim); margin-top: 1px; }
 .sun-countdown.urgent { color: var(--accent); font-weight: 600; }
 
+/* 摄影黄金时段 */
+.photo-hours {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+.photo-hour-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+.ph-icon { font-size: 0.9rem; flex-shrink: 0; }
+.ph-label { color: var(--text-dim); flex-shrink: 0; }
+.ph-time { color: #fff; font-weight: 500; margin-left: auto; white-space: nowrap; }
+
 /* 倒计时条 */
 .countdown-bar {
   margin-top: 10px;

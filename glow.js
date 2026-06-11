@@ -13,6 +13,7 @@ let $locName, $weatherCard, $tabBar, $tabDate;
 let $weatherIcon, $weatherTemp, $weatherDesc;
 let $wdHumidity, $wdCloud, $wdVisibility, $wdPrecip;
 let $sunriseTime, $sunsetTime, $sunriseCountdown, $sunsetCountdown, $countdownBar;
+let $blueMorning, $goldMorning, $goldEvening, $blueEvening;
 let $mapPickBtn, $mapModal, $mapContainer, $mapCoords, $mapCancelBtn, $mapConfirmBtn;
 let $mapLocateBtn, $mapSearchInput, $mapSearchBtn, $mapSearchResults;
 
@@ -93,6 +94,10 @@ function bindDOM() {
   $sunriseCountdown = document.getElementById('sunriseCountdown');
   $sunsetCountdown = document.getElementById('sunsetCountdown');
   $countdownBar = document.getElementById('countdownBar');
+  $blueMorning = document.getElementById('blueMorning');
+  $goldMorning = document.getElementById('goldMorning');
+  $goldEvening = document.getElementById('goldEvening');
+  $blueEvening = document.getElementById('blueEvening');
   $mapPickBtn = document.getElementById('mapPickBtn');
   $mapModal = document.getElementById('mapModal');
   $mapContainer = document.getElementById('mapContainer');
@@ -1896,6 +1901,37 @@ function startCountdown(data) {
 
     $sunriseTime.textContent = sr.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
     $sunsetTime.textContent = ss.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+    // === 蓝调时刻 & 黄金时刻计算 ===
+    // 简化模型：持续时间随纬度和季节变化
+    // 高纬度夏季：蓝调可达40-60分钟；低纬度冬季：仅15-20分钟
+    const absLat = Math.abs(state.lat || 39.9);
+    const month = now.getMonth() + 1;
+    // 基础时长（分钟）：中纬度春秋约25分钟
+    let baseDuration = 25;
+    if (absLat > 45) baseDuration = 35;       // 高纬度更长
+    else if (absLat < 25) baseDuration = 18;  // 低纬度更短
+    // 季节修正：夏季略长，冬季略短
+    if ((month >= 5 && month <= 8)) baseDuration += 5;
+    else if (month >= 11 || month <= 2) baseDuration -= 3;
+
+    const blueMs = baseDuration * 60000;   // 蓝调时长
+    const goldMs = 60 * 60000;             // 黄金时刻固定约1小时
+
+    // 晨蓝调：日出前 baseDuration 分钟 → 日出
+    const bmStart = new Date(sr.getTime() - blueMs);
+    // 晨黄金：日出 → 日出后1小时
+    const gmEnd = new Date(sr.getTime() + goldMs);
+    // 晚黄金：日落前1小时 → 日落
+    const geStart = new Date(ss.getTime() - goldMs);
+    // 晚蓝调：日落 → 日落后 baseDuration 分钟
+    const beEnd = new Date(ss.getTime() + blueMs);
+
+    const fmt = (d) => d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    if ($blueMorning) $blueMorning.textContent = `${fmt(bmStart)} - ${fmt(sr)}`;
+    if ($goldMorning) $goldMorning.textContent = `${fmt(sr)} - ${fmt(gmEnd)}`;
+    if ($goldEvening) $goldEvening.textContent = `${fmt(geStart)} - ${fmt(ss)}`;
+    if ($blueEvening) $blueEvening.textContent = `${fmt(ss)} - ${fmt(beEnd)}`;
 
     // 倒计时：距离最近的日出或日落事件
     // 找所有日出日落时间，找到下一个
