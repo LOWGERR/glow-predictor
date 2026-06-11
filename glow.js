@@ -2019,8 +2019,6 @@ function startCountdown(data) {
     $sunsetTime.textContent = ss.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 
     // === 太阳方位角静态显示（无需罗盘） ===
-    const di = state.activeTab;
-    const dateStr = daily.time[di];
     if (dateStr && state.lat != null) {
       const srAz = _calcSolarAzimuth(state.lat, dateStr, 'sunrise');
       const ssAz = _calcSolarAzimuth(state.lat, dateStr, 'sunset');
