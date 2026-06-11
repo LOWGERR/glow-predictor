@@ -1179,9 +1179,9 @@ function _calcSolarAzimuth(lat, dateStr, type) {
   const cosH = -Math.tan(radLat) * Math.tan(radDec);
   const H = Math.acos(Math.max(-1, Math.min(1, cosH))) * 180 / Math.PI;
 
-  // 方位角公式
+  // 方位角公式（clamp sinAz 到 [-1,1] 防止浮点误差导致 NaN）
   const sinAz = Math.cos(radDec) * Math.sin(H * Math.PI / 180) / Math.cos(radLat);
-  let azimuth = Math.asin(sinAz) * 180 / Math.PI;
+  let azimuth = Math.asin(Math.max(-1, Math.min(1, sinAz))) * 180 / Math.PI;
   if (type === 'sunrise') azimuth = 180 - azimuth;
   else azimuth += 180;
 
