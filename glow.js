@@ -847,7 +847,7 @@ async function fetchForecast() {
   const baseParams = {
     latitude: state.lat,
     longitude: state.lon,
-    hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,precipitation_probability,visibility,temperature_2m,weather_code',
+    hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,dew_point_2m,precipitation_probability,visibility,temperature_2m,weather_code',
     daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
     timezone: 'auto',
     forecast_days: 3,
@@ -1121,6 +1121,7 @@ function extractHourlyData(data, idx) {
     cloudMid: data.hourly.cloud_cover_mid[idx],
     cloudHigh: data.hourly.cloud_cover_high[idx],
     humidity: data.hourly.relative_humidity_2m[idx],
+    dewPoint: data.hourly.dew_point_2m ? data.hourly.dew_point_2m[idx] : null,
     precipProb: data.hourly.precipitation_probability[idx],
     visibility: data.hourly.visibility[idx],
     temp: data.hourly.temperature_2m[idx],
@@ -1153,6 +1154,34 @@ function _calcAODProxy(visibility, humidity, cloudLow) {
   return Math.max(0, Math.min(1, aod));
 }
 
+// === 云底高度估算（基于温度-露点差） ===
+// 简化公式：云底高度(m) ≈ (温度°C - 露点°C) × 125
+// 返回米为单位，null 表示无法计算
+function _calcCloudBaseHeight(temp, dewPoint) {
+  if (temp == null || dewPoint == null) return null;
+  const spread = temp - dewPoint;
+  if (spread < 0) return 0; // 饱和状态，云底≈地面
+  return Math.round(spread * 125);
+}
+
+// === 中高层云连续性评分 ===
+// 原理：中层云和高层云同时存在且量级接近 → 云层连续、反射面大 → 加分
+//       只有一层有云或两层差异悬殊 → 云层破碎 → 不加分甚至减分
+// 返回 -8 ~ +12 的修正值
+function _calcCloudContinuity(cloudMid, cloudHigh) {
+  // 两层都很少 → 无连续性可言
+  if (cloudMid < 5 && cloudHigh < 5) return 0;
+
+  // 只有一层有云 → 单层云，连续性差
+  if (cloudMid < 5 || cloudHigh < 5) return -4;
+
+  // 两层都有云 → 计算比值判断连续性
+  const ratio = Math.min(cloudMid, cloudHigh) / Math.max(cloudMid, cloudHigh);
+  if (ratio >= 0.7) return 12;   // 两层云量接近 → 高度连续
+  else if (ratio >= 0.4) return 6;  // 中等连续
+  else return -2;               // 差异悬殊 → 破碎
+}
+
 // === 评分算法 v3（多模型集成 + 趋势感知）===
 // 概率：霞光出现的可能性（%），主要看遮挡因素
 // 质量：霞光色彩壮观度（%），主要看散射条件
@@ -1169,6 +1198,16 @@ function calcProbability(d, type, trendData) {
   if (aodProxy > 0.6) prob -= 22;      // 严重雾霾/沙尘 → 霞光概率大幅降低
   else if (aodProxy > 0.4) prob -= 14;  // 明显浑浊
   else if (aodProxy > 0.25) prob -= 6;  // 轻度浑浊
+
+  // === 0b. 云层垂直结构细化 ===
+  const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
+  prob += continuityScore * 0.7; // 概率维度权重略低于质量维度
+
+  const cloudBaseH = _calcCloudBaseHeight(d.temp, d.dewPoint);
+  if (cloudBaseH !== null) {
+    if (cloudBaseH < 200 && cloudLow > 20) prob -= 6;
+    else if (cloudBaseH < 500 && cloudLow > 35) prob -= 3;
+  }
 
   // === 1. 中高层云评分（精细非线性曲线）===
   if (cloudMH < 3)  prob -= 42;
@@ -1261,6 +1300,19 @@ function calcQuality(d, type) {
   else if (aodProxy > 0.4) quality -= 18;  // 明显浑浊
   else if (aodProxy > 0.25) quality -= 8;  // 轻度浑浊
   else if (aodProxy < 0.1 && cloudMH >= 10) quality += 6; // 极致通透+有云=最佳条件
+
+  // === 0b. 云层垂直结构细化 ===
+  // 中高层云连续性评分（两层云量接近 → 连续反射面 → 加分）
+  const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
+  quality += continuityScore;
+
+  // 云底高度修正（低云底易遮挡霞光）
+  const cloudBaseH = _calcCloudBaseHeight(d.temp, d.dewPoint);
+  if (cloudBaseH !== null) {
+    if (cloudBaseH < 200 && cloudLow > 20) quality -= 8;   // 云底极低 + 有低云 → 严重遮挡
+    else if (cloudBaseH < 500 && cloudLow > 35) quality -= 4; // 云底较低 + 低云较多
+    else if (cloudBaseH > 2000 && cloudMH >= 15) quality += 3; // 高云底 + 中高层有云 → 视野开阔
+  }
 
   // === 1. 中高层云：色彩载体（精细非线性曲线） ===
   // 核心区间拉得更宽，让云量在 10-70% 都有较好表现
