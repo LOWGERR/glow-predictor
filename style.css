@@ -587,12 +587,221 @@ body {
   font-size: 0.7rem !important;
 }
 
-/* === 页脚 === */
-.footer {
-  text-align: center;
-  padding: 20px 0 10px;
-  font-size: 0.68rem;
-  color: #444;
+/* === 日间模式适配 === */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f5f7;
+    --card-bg: #ffffff;
+    --card-bg2: #fafafa;
+    --text: #1d1d1f;
+    --text-dim: #6e6e73;
+    --border: rgba(0,0,0,0.08);
+    --good: #34c759;
+    --bad: #ff3b30;
+    --warn: #ff9500;
+    --great: #af52de;
+    --blue: #007aff;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .header {
+    background: linear-gradient(180deg, rgba(255,152,0,0.04) 0%, transparent 100%);
+  }
+
+  .weather-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f8fa 100%);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .weather-temp {
+    color: #1d1d1f;
+  }
+
+  .wd-item {
+    background: rgba(0,0,0,0.03);
+  }
+
+  .wd-val {
+    color: #1d1d1f;
+  }
+
+  .sunrise-block { background: rgba(255,152,0,0.06); }
+  .sunset-block  { background: rgba(224,64,251,0.06); }
+
+  .azimuth-row {
+    background: rgba(0,0,0,0.03);
+  }
+
+  .az-value {
+    color: #1d1d1f;
+  }
+
+  .photo-hour-item {
+    background: rgba(0,0,0,0.03);
+  }
+
+  .ph-time {
+    color: #1d1d1f;
+  }
+
+  .tab-bar {
+    background: var(--card-bg);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .prediction-card {
+    background: var(--card-bg2);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .card-header {
+    border-bottom-color: rgba(0,0,0,0.08);
+  }
+
+  .score-circle::after {
+    background: var(--card-bg2);
+  }
+
+  .factor {
+    background: rgba(0,0,0,0.03);
+  }
+
+  .factor:active {
+    background: rgba(0,0,0,0.06);
+  }
+
+  .card-tips {
+    background: rgba(255,152,0,0.04);
+    color: #4a4a4c;
+  }
+
+  .legend {
+    background: var(--card-bg);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .timing-tip {
+    background: var(--card-bg);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .tip-content {
+    color: #4a4a4c;
+  }
+
+  .tip-note {
+    border-top-color: rgba(0,0,0,0.08);
+  }
+
+  /* 地图弹窗日间模式 */
+  .map-modal {
+    background: #fff;
+  }
+
+  .map-header {
+    background: #f5f5f7;
+    border-bottom-color: rgba(0,0,0,0.1);
+  }
+
+  .map-title {
+    color: #1d1d1f;
+  }
+
+  .map-search-container {
+    background: #f5f5f7;
+    border-bottom-color: rgba(0,0,0,0.1);
+  }
+
+  .map-search-container input {
+    background: #fff;
+    border-color: #d1d1d6;
+    color: #1d1d1f;
+  }
+
+  .map-search-container input:focus {
+    border-color: var(--accent);
+  }
+
+  .map-search-results {
+    background: #f5f5f7;
+    border-bottom-color: rgba(0,0,0,0.1);
+  }
+
+  .map-search-results .result-item {
+    border-bottom-color: rgba(0,0,0,0.06);
+    color: #1d1d1f;
+  }
+
+  .map-search-results .result-name {
+    color: #1d1d1f;
+  }
+
+  .map-search-results .result-detail {
+    color: #6e6e73;
+  }
+
+  .map-footer {
+    background: #f5f5f7;
+    border-top-color: rgba(0,0,0,0.1);
+  }
+
+  .nearby-categories {
+    background: #f5f5f7;
+    border-top-color: rgba(0,0,0,0.1);
+  }
+
+  .nearby-cat-btn {
+    background: #fff;
+    border-color: rgba(0,0,0,0.1);
+    color: #1d1d1f;
+  }
+
+  .nearby-cat-btn.active {
+    background: var(--accent);
+    color: #000;
+  }
+
+  .nearby-results {
+    background: #f5f5f7;
+  }
+
+  .nearby-result-item {
+    border-bottom-color: rgba(0,0,0,0.06);
+  }
+
+  .nearby-result-name {
+    color: #1d1d1f;
+  }
+
+  .nearby-result-detail {
+    color: #6e6e73;
+  }
+
+  .loc-name {
+    color: #1d1d1f;
+  }
+
+  .location-actions button {
+    background: var(--card-bg);
+    border-color: rgba(0,0,0,0.1);
+    color: var(--text-dim);
+  }
+
+  .location-actions button:active {
+    background: rgba(255,152,0,0.08);
+  }
+
+  .countdown-bar {
+    background: rgba(255,152,0,0.06);
+  }
+
+  .demo-banner {
+    background: rgba(255,152,0,0.06);
+  }
 }
 
 /* === 演示模式提示 === */
