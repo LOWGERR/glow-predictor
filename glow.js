@@ -1,4 +1,5 @@
-/* === 朝霞晚霞预测 · 摄影助手 - v2 === */
+/* === 朝霞晚霞预测 · 摄影助手 - v30 ===
+ * v30: 修复评分全为100的bug — 初始值校准（100→50）、权重因子重新校准、各评分区间收窄 */
 
 // ⚠️ 安全警告：API Key 硬编码在前端代码中，任何查看源码的人都能获取。
 // 建议：监控用量、设置配额限制、定期轮换 Key。
@@ -1356,28 +1357,29 @@ function _calcHumidityScore(humidity) {
 // 概率：霞光出现的可能性（%），主要看遮挡因素
 // 质量：霞光色彩壮观度（%），主要看散射条件
 function calcProbability(d, type, trendData) {
-  let prob = 100;
+  // ⚠️ 修复 v30: 初始值 100→50，校准各因子权重，使评分合理分布
+  let prob = 50;
 
   const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh, cloudLow = d.cloudLow;
   const cloudMH = Math.max(cloudMid, cloudHigh);
   const h = d.humidity;
   const v = d.visibility;
 
-  // === 0. v4 云型分类评分（取代旧的 AOD 代理） ===
+  // === 0. v4 云型分类评分 ===
   const cloudType = _calcCloudTypeScore(cloudLow, cloudMid, cloudHigh, d.cloudCover);
-  prob += cloudType.score * 0.5; // 概率维度用 50% 权重
+  prob += cloudType.score * 0.3;
 
-  // === 0b. 能见度独立评分（新） ===
+  // === 0b. 能见度独立评分 ===
   const visScore = _calcVisibilityScore(v);
-  prob += visScore.score * 0.3;
+  prob += visScore.score * 0.25;
 
-  // === 0c. 湿度评分（新） ===
+  // === 0c. 湿度评分 ===
   const humScore = _calcHumidityScore(h);
-  prob += humScore * 0.2;
+  prob += humScore * 0.15;
 
-  // === 0d. 云层垂直结构细化（保留原版连续性评分） ===
+  // === 0d. 云层垂直结构细化 ===
   const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
-  prob += continuityScore * 0.5;
+  prob += continuityScore * 0.3;
 
   const cloudBaseH = _calcCloudBaseHeight(d.temp, d.dewPoint);
   if (cloudBaseH !== null) {
@@ -1388,39 +1390,42 @@ function calcProbability(d, type, trendData) {
   // === 1. 中高层云评分 ===
   if (cloudMH < 3)  prob -= 42;
   else if (cloudMH < 8) prob -= 28;
-  else if (cloudMH < 14) prob -= 14;
-  else if (cloudMH >= 16 && cloudMH <= 62) prob -= 0;
-  else if (cloudMH <= 75) prob -= 3;
-  else if (cloudMH <= 85) prob -= 18;
-  else if (cloudMH <= 93) prob -= 32;
+  else if (cloudMH < 15) prob -= 14;
+  else if (cloudMH >= 18 && cloudMH <= 55) prob -= 0;
+  else if (cloudMH <= 65) prob -= 4;
+  else if (cloudMH <= 75) prob -= 10;
+  else if (cloudMH <= 85) prob -= 22;
+  else if (cloudMH <= 93) prob -= 35;
   else prob -= 45;
 
   // === 2. 中高云叠加奖励 ===
-  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 68) {
-    prob += 10;
+  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 55) {
+    prob += 8;
   }
 
   // === 3. 低云评分 + 遮挡中高层云的穿透惩罚 ===
   if (cloudLow > 75) {
-    prob -= 35;
+    prob -= 40;
     if (cloudMH > 15) prob -= 12;
   } else if (cloudLow > 55) {
-    prob -= 22;
+    prob -= 28;
     if (cloudMH > 20) prob -= 6;
   } else if (cloudLow > 35) {
-    prob -= 10;
+    prob -= 15;
   } else if (cloudLow > 18) {
-    prob -= 4;
+    prob -= 6;
+  } else if (cloudLow <= 5) {
+    prob += 2;
   } else {
-    prob += 3;
+    prob += 1;
   }
 
   // === 4. 降水概率 ===
   if (d.precipProb > 75) prob -= 40;
   else if (d.precipProb > 55) prob -= 25;
-  else if (d.precipProb > 30) prob -= 12;
-  else if (d.precipProb > 12) prob -= 5;
-  else prob += 3;
+  else if (d.precipProb > 30) prob -= 15;
+  else if (d.precipProb > 12) prob -= 8;
+  else prob += 2;
 
   // === 5. 总云量极端情况 ===
   if (d.cloudCover > 95) prob -= 25;
@@ -1452,24 +1457,25 @@ function calcProbability(d, type, trendData) {
 }
 
 function calcQuality(d, type) {
-  let quality = 100;
+  // ⚠️ 修复 v30: 初始值 100→50，校准各因子权重
+  let quality = 50;
 
   const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh, cloudLow = d.cloudLow;
   const cloudMH = Math.max(cloudMid, cloudHigh);
   const h = d.humidity;
   const v = d.visibility;
 
-  // === 0. v4 云型分类评分（质量维度权重 x0.8） ===
+  // === 0. v4 云型分类评分（质量维度权重 x0.6） ===
   const cloudType = _calcCloudTypeScore(cloudLow, cloudMid, cloudHigh, d.cloudCover);
-  quality += cloudType.score * 0.8;
+  quality += cloudType.score * 0.6;
 
-  // === 0b. 能见度独立评分（质量维度权重 x0.6） ===
+  // === 0b. 能见度独立评分（质量维度权重 x0.4） ===
   const visScore = _calcVisibilityScore(v);
-  quality += visScore.score * 0.6;
+  quality += visScore.score * 0.4;
 
-  // === 0c. 湿度评分（质量维度权重 x0.5） ===
+  // === 0c. 湿度评分（质量维度权重 x0.25） ===
   const humScore = _calcHumidityScore(h);
-  quality += humScore * 0.5;
+  quality += humScore * 0.25;
 
   // === 0d. 云层垂直结构细化 ===
   const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
@@ -1486,15 +1492,16 @@ function calcQuality(d, type) {
   if (cloudMH < 3)  quality -= 52;
   else if (cloudMH < 8) quality -= 35;
   else if (cloudMH < 15) quality -= 18;
-  else if (cloudMH >= 18 && cloudMH <= 58) quality += 10;
-  else if (cloudMH <= 70) quality -= 2;
-  else if (cloudMH <= 82) quality -= 12;
-  else if (cloudMH <= 92) quality -= 28;
+  else if (cloudMH >= 18 && cloudMH <= 55) quality += 10;
+  else if (cloudMH <= 65) quality -= 4;
+  else if (cloudMH <= 72) quality -= 8;
+  else if (cloudMH <= 82) quality -= 18;
+  else if (cloudMH <= 92) quality -= 32;
   else quality -= 48;
 
   // === 2. 中高云叠加奖励 ===
-  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 72) {
-    quality += 12;
+  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 55) {
+    quality += 8;
   }
 
   // === 3. 低云遮挡关系 ===
@@ -1502,27 +1509,27 @@ function calcQuality(d, type) {
     quality -= 30;
     if (cloudMH > 20) quality -= 10;
   } else if (cloudLow > 50) {
-    quality -= 18;
+    quality -= 22;
   } else if (cloudLow > 30) {
-    quality -= 8;
+    quality -= 12;
   } else if (cloudLow > 12) {
-    quality -= 3;
+    quality -= 5;
   }
-  if (cloudLow < 8) quality += 4;
+  if (cloudLow < 8) quality += 3;
 
   // === 4. 联合惩罚（保留原版，捕获极端组合） ===
-  if (h > 70 && v < 4000) quality -= 14;
-  if (h > 82 && v < 6000) quality -= 10;
-  if (h < 50 && v < 3000) quality -= 8;
+  if (h > 75 && v < 4000) quality -= 18;
+  if (h > 82 && v < 6000) quality -= 16;
+  if (h < 50 && v < 3000) quality -= 10;
   if (h >= 25 && h <= 55 && v > 10000 && cloudMH >= 15 && cloudMH <= 55) {
-    quality += 6;
+    quality += 5;
   }
 
   // === 5. 太阳高度角季节性修正 ===
   if (state.lat != null) {
     const month = new Date().getMonth() + 1;
     const solarCorrection = _calcSolarElevationCorrection(state.lat, month, type);
-    quality += solarCorrection * 0.8;
+    quality += solarCorrection * 0.6;
   }
 
   return Math.max(0, Math.min(100, Math.round(quality)));
