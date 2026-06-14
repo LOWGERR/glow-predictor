@@ -1373,7 +1373,7 @@ function calcProbability(d, type, trendData) {
 
   // === 0c. 湿度评分（新） ===
   const humScore = _calcHumidityScore(h);
-  prob += humScore.score * 0.2;
+  prob += humScore * 0.2;
 
   // === 0d. 云层垂直结构细化（保留原版连续性评分） ===
   const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
@@ -1469,7 +1469,7 @@ function calcQuality(d, type) {
 
   // === 0c. 湿度评分（质量维度权重 x0.5） ===
   const humScore = _calcHumidityScore(h);
-  quality += humScore.score * 0.5;
+  quality += humScore * 0.5;
 
   // === 0d. 云层垂直结构细化 ===
   const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
