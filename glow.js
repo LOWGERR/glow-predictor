@@ -1258,7 +1258,101 @@ function _calcSolarElevationCorrection(lat, month, type) {
   return Math.round(Math.max(-5, Math.min(5, seasonalFactor)));
 }
 
-// === 评分算法 v3（多模型集成 + 趋势感知）===
+// ════════════════════════════════════════════════════════════
+// 🔬 多因子融合评分引擎 v4
+// 基于 r-ayin/sunset-prediction 研究驱动型日落质量引擎 v2.0
+// 融合改进点：
+//   - 云型分类（高云主导/低云主导/混合/晴空/阴天）
+//   - 能见度作为独立 25% 权重因子（原仅通过 AOD proxy 间接）
+//   - 多层云纹理加分（丰富度更细腻）
+//   - 总云量 15-60% 最优区间重新校准
+// ════════════════════════════════════════════════════════════
+
+// === 云型分类评分（权重 ~35%） ===
+// 高云 > 低云 > 混合 > 晴空 > 阴天
+// 返回 { type, score, label } 分值 0-40 分
+function _calcCloudTypeScore(cloudLow, cloudMid, cloudHigh, totalCloud) {
+  const highIsDominant = cloudHigh >= 30 && cloudLow < 40;
+  const lowIsDominant = cloudLow >= 20 && cloudLow <= 55 && cloudHigh < 40;
+  const multiLayer = cloudHigh > 15 && cloudLow > 10;
+  const overcast = totalCloud > 80;
+  const clearSky = totalCloud < 10;
+
+  let type, score, label;
+
+  if (highIsDominant && !overcast) {
+    // 🔥 高云晚霞——最佳！卷云/卷积云散射红光最强
+    type = 'high_cloud_dominant';
+    score = 40;
+    label = '高云主导';
+  } else if (lowIsDominant && !overcast) {
+    // 低云主导——也不错，但需要 20-55%
+    type = 'low_cloud_dominant';
+    score = 28;
+    label = '低云主导';
+  } else if (totalCloud >= 10 && totalCloud <= 75) {
+    // 混合云——适中
+    type = 'mixed';
+    score = 22;
+    label = '混合云';
+  } else if (clearSky) {
+    // 晴空——无云散射，色彩平淡
+    type = 'clear';
+    score = 5;
+    label = '晴空';
+  } else if (overcast) {
+    // 阴天——光线被完全遮挡
+    type = 'overcast';
+    score = -10;
+    label = '阴天';
+  } else {
+    type = 'unknown';
+    score = 10;
+    label = '不确定';
+  }
+
+  // 多层云纹理加分（丰富度）
+  if (multiLayer && type !== 'overcast' && type !== 'clear') {
+    score += 8;
+    label += '+多层';
+  } else if (type === 'high_cloud_dominant' && cloudHigh > 40) {
+    // 高云单层也有丰富纹理
+    score += 4;
+    label += '+纹理';
+  }
+
+  // 总云量最优区间额外加成
+  if (totalCloud >= 15 && totalCloud <= 60 && type !== 'clear') {
+    score += 5;
+  }
+
+  return { type, score: Math.round(score), label };
+}
+
+// === 能见度独立评分（权重 ~25%） ===
+// 能见度 >20km = 通透，12-20km = 良好，<8km = 雾霾
+function _calcVisibilityScore(visibility) {
+  const visKm = visibility / 1000;
+  if (visKm >= 20) return { score: 25, label: '极致通透', visKm };
+  if (visKm >= 12) return { score: 18, label: '通透', visKm };
+  if (visKm >= 8)  return { score: 12, label: '良好', visKm };
+  if (visKm >= 5)  return { score: 5, label: '轻微浑浊', visKm };
+  if (visKm >= 3)  return { score: -2, label: '浑浊', visKm };
+  return { score: -10, label: '严重雾霾', visKm };
+}
+
+// === 湿度评分（权重 ~15%） ===
+// 40-60% 最佳；>80% 雾蒙蒙；<30% 太干
+function _calcHumidityScore(humidity) {
+  if (humidity >= 40 && humidity <= 60) return 15;
+  if (humidity >= 30 && humidity < 40) return 8;
+  if (humidity > 60 && humidity <= 75) return 4;
+  if (humidity > 75 && humidity <= 85) return -4;
+  if (humidity > 85) return -12;
+  return -8; // <30%
+}
+
+// === 评分算法 v4（r-ayin 融合版）===
 // 概率：霞光出现的可能性（%），主要看遮挡因素
 // 质量：霞光色彩壮观度（%），主要看散射条件
 function calcProbability(d, type, trendData) {
@@ -1269,22 +1363,21 @@ function calcProbability(d, type, trendData) {
   const h = d.humidity;
   const v = d.visibility;
 
-  // === 0. AOD 通透度代理（能见度+湿度+低云联合推断） ===
-  const aodProxy = _calcAODProxy(v, h, cloudLow);
-  if (aodProxy > 0.6) prob -= 22;      // 严重雾霾/沙尘 → 霞光概率大幅降低
-  else if (aodProxy > 0.4) prob -= 14;  // 明显浑浊
-  else if (aodProxy > 0.25) prob -= 6;  // 轻度浑浊
+  // === 0. v4 云型分类评分（取代旧的 AOD 代理） ===
+  const cloudType = _calcCloudTypeScore(cloudLow, cloudMid, cloudHigh, d.cloudCover);
+  prob += cloudType.score * 0.5; // 概率维度用 50% 权重
 
-  // === 0c. 太阳高度角季节性修正 ===
-  if (state.lat != null) {
-    const month = new Date().getMonth() + 1;
-    const solarCorrection = _calcSolarElevationCorrection(state.lat, month, type);
-    prob += solarCorrection;
-  }
+  // === 0b. 能见度独立评分（新） ===
+  const visScore = _calcVisibilityScore(v);
+  prob += visScore.score * 0.3;
 
-  // === 0b. 云层垂直结构细化 ===
+  // === 0c. 湿度评分（新） ===
+  const humScore = _calcHumidityScore(h);
+  prob += humScore.score * 0.2;
+
+  // === 0d. 云层垂直结构细化（保留原版连续性评分） ===
   const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
-  prob += continuityScore * 0.7; // 概率维度权重略低于质量维度
+  prob += continuityScore * 0.5;
 
   const cloudBaseH = _calcCloudBaseHeight(d.temp, d.dewPoint);
   if (cloudBaseH !== null) {
@@ -1292,11 +1385,11 @@ function calcProbability(d, type, trendData) {
     else if (cloudBaseH < 500 && cloudLow > 35) prob -= 3;
   }
 
-  // === 1. 中高层云评分（精细非线性曲线）===
+  // === 1. 中高层云评分 ===
   if (cloudMH < 3)  prob -= 42;
   else if (cloudMH < 8) prob -= 28;
   else if (cloudMH < 14) prob -= 14;
-  else if (cloudMH >= 16 && cloudMH <= 62) prob -= 0;  // ★ 理想区间
+  else if (cloudMH >= 16 && cloudMH <= 62) prob -= 0;
   else if (cloudMH <= 75) prob -= 3;
   else if (cloudMH <= 85) prob -= 18;
   else if (cloudMH <= 93) prob -= 32;
@@ -1307,11 +1400,9 @@ function calcProbability(d, type, trendData) {
     prob += 10;
   }
 
-  // === 3. 低云评分 + 遮挡中高层云的穿透惩罚（核心改进） ===
-  // 低云遮蔽地平线——直接影响能否看到霞光
+  // === 3. 低云评分 + 遮挡中高层云的穿透惩罚 ===
   if (cloudLow > 75) {
     prob -= 35;
-    // 低云太厚 + 中高层也有云 → 中高层云被遮，实际上看不见霞
     if (cloudMH > 15) prob -= 12;
   } else if (cloudLow > 55) {
     prob -= 22;
@@ -1321,7 +1412,7 @@ function calcProbability(d, type, trendData) {
   } else if (cloudLow > 18) {
     prob -= 4;
   } else {
-    prob += 3; // 低云少 → 地平线干净，加分
+    prob += 3;
   }
 
   // === 4. 降水概率 ===
@@ -1329,40 +1420,32 @@ function calcProbability(d, type, trendData) {
   else if (d.precipProb > 55) prob -= 25;
   else if (d.precipProb > 30) prob -= 12;
   else if (d.precipProb > 12) prob -= 5;
-  else prob += 3; // 降水概率低 → 天气稳定
+  else prob += 3;
 
   // === 5. 总云量极端情况 ===
   if (d.cloudCover > 95) prob -= 25;
-  if (d.cloudCover < 5 && cloudMH < 5) prob -= 15; // 几乎无云
+  if (d.cloudCover < 5 && cloudMH < 5) prob -= 15;
 
-  // === 6. 湿度极端惩罚 ===
-  // 过高湿度 → 云可能为低云/雾，降低霞出现的概率
-  if (h > 90) prob -= 15;
-  else if (h > 80) prob -= 6;
-
-  // === 7. 能见度极端惩罚 ===
-  if (v < 1500) prob -= 20;  // 浓雾 → 根本看不见
-  else if (v < 3000) prob -= 10;
-
-  // === 8. 趋势评分：扩展窗口 + 滑动平均后的精细化判断 ===
+  // === 6. 趋势评分 ===
   if (trendData && trendData.cloudTrend != null) {
     if (type === 'morning') {
-      // 朝霞：日出前云量持续下降 → 预示清晨通透（preEventTrend < 0 且幅度适中）
       if (trendData.preEventTrend < -3 && trendData.preEventTrend > -15) prob += 12;
       else if (trendData.preEventTrend < -1 && trendData.preEventTrend >= -3) prob += 6;
-      // 日出前云量暴增 → 可能云层过厚遮挡
       else if (trendData.preEventTrend > 15) prob -= 8;
-      // 日出后低云快速消散 → 地平线变清晰
       if (trendData.lowCloudTrend < -5 && cloudLow < 40) prob += 6;
     } else {
-      // 晚霞：日落前云量稳定或缓慢增厚 → 预示晚霞延续
-      if (Math.abs(trendData.preEventTrend) < 5) prob += 8;        // 稳定
-      else if (trendData.preEventTrend > 0 && trendData.preEventTrend <= 8) prob += 5; // 缓慢增厚
-      // 高层云在日落后继续增厚 → 晚霞可能延续更久
+      if (Math.abs(trendData.preEventTrend) < 5) prob += 8;
+      else if (trendData.preEventTrend > 0 && trendData.preEventTrend <= 8) prob += 5;
       if (trendData.highTrend > 2 && trendData.highTrend < 12) prob += 6;
-      // 云量暴增或暴减都不利
       else if (Math.abs(trendData.preEventTrend) > 20) prob -= 8;
     }
+  }
+
+  // === 7. 太阳高度角季节性修正 ===
+  if (state.lat != null) {
+    const month = new Date().getMonth() + 1;
+    const solarCorrection = _calcSolarElevationCorrection(state.lat, month, type);
+    prob += solarCorrection;
   }
 
   return Math.max(0, Math.min(100, Math.round(prob)));
@@ -1376,58 +1459,48 @@ function calcQuality(d, type) {
   const h = d.humidity;
   const v = d.visibility;
 
-  // === 0. AOD 通透度代理（基于能见度+湿度+低云的联合推断） ===
-  // 等效 AOD 指数：值越高 = 大气越浑浊 = 霞光色彩越灰暗
-  // 能见度 > 15km 且湿度 < 60% → 极低气溶胶；能见度 < 3km → 高气溶胶
-  const aodProxy = _calcAODProxy(v, h, cloudLow);
-  if (aodProxy > 0.6) quality -= 28;      // 严重雾霾/沙尘
-  else if (aodProxy > 0.4) quality -= 18;  // 明显浑浊
-  else if (aodProxy > 0.25) quality -= 8;  // 轻度浑浊
-  else if (aodProxy < 0.1 && cloudMH >= 10) quality += 6; // 极致通透+有云=最佳条件
+  // === 0. v4 云型分类评分（质量维度权重 x0.8） ===
+  const cloudType = _calcCloudTypeScore(cloudLow, cloudMid, cloudHigh, d.cloudCover);
+  quality += cloudType.score * 0.8;
 
-  // === 0c. 太阳高度角季节性修正 ===
-  if (state.lat != null) {
-    const month = new Date().getMonth() + 1;
-    const solarCorrection = _calcSolarElevationCorrection(state.lat, month, type);
-    quality += solarCorrection * 0.8; // 质量维度权重略低于概率维度
-  }
+  // === 0b. 能见度独立评分（质量维度权重 x0.6） ===
+  const visScore = _calcVisibilityScore(v);
+  quality += visScore.score * 0.6;
 
-  // === 0b. 云层垂直结构细化 ===
-  // 中高层云连续性评分（两层云量接近 → 连续反射面 → 加分）
+  // === 0c. 湿度评分（质量维度权重 x0.5） ===
+  const humScore = _calcHumidityScore(h);
+  quality += humScore.score * 0.5;
+
+  // === 0d. 云层垂直结构细化 ===
   const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
   quality += continuityScore;
 
-  // 云底高度修正（低云底易遮挡霞光）
   const cloudBaseH = _calcCloudBaseHeight(d.temp, d.dewPoint);
   if (cloudBaseH !== null) {
-    if (cloudBaseH < 200 && cloudLow > 20) quality -= 8;   // 云底极低 + 有低云 → 严重遮挡
-    else if (cloudBaseH < 500 && cloudLow > 35) quality -= 4; // 云底较低 + 低云较多
-    else if (cloudBaseH > 2000 && cloudMH >= 15) quality += 3; // 高云底 + 中高层有云 → 视野开阔
+    if (cloudBaseH < 200 && cloudLow > 20) quality -= 8;
+    else if (cloudBaseH < 500 && cloudLow > 35) quality -= 4;
+    else if (cloudBaseH > 2000 && cloudMH >= 15) quality += 3;
   }
 
-  // === 1. 中高层云：色彩载体（精细非线性曲线） ===
-  // 核心区间拉得更宽，让云量在 10-70% 都有较好表现
-  if (cloudMH < 3)  quality -= 52;       // 万里无云 → 几乎不可能出霞
-  else if (cloudMH < 8) quality -= 35;   // 微量云 → 很淡
-  else if (cloudMH < 15) quality -= 18;  // 偏少
-  else if (cloudMH >= 18 && cloudMH <= 58) quality += 10; // ★ 最佳区间：云量恰到好处
+  // === 1. 中高层云：色彩载体 ===
+  if (cloudMH < 3)  quality -= 52;
+  else if (cloudMH < 8) quality -= 35;
+  else if (cloudMH < 15) quality -= 18;
+  else if (cloudMH >= 18 && cloudMH <= 58) quality += 10;
   else if (cloudMH <= 70) quality -= 2;
   else if (cloudMH <= 82) quality -= 12;
   else if (cloudMH <= 92) quality -= 28;
-  else quality -= 48;                    // 完全阴天
+  else quality -= 48;
 
-  // === 2. 中高云叠加奖励（两层不同高度的云 = 更丰富的色彩层次） ===
+  // === 2. 中高云叠加奖励 ===
   if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 72) {
     quality += 12;
   }
 
-  // === 3. 低云遮挡关系（核心改进） ===
-  // 关键新逻辑：低云多但中高层云也有 → 低云遮住地平线，中高层云被遮看不见
-  // 低云遮挡地平线（直接减分）
+  // === 3. 低云遮挡关系 ===
   if (cloudLow > 70) {
     quality -= 30;
-    // 低云太厚时，即使有中高层云也被遮挡 → 额外惩罚
-    if (cloudMH > 20) quality -= 10; // 有云但看不见
+    if (cloudMH > 20) quality -= 10;
   } else if (cloudLow > 50) {
     quality -= 18;
   } else if (cloudLow > 30) {
@@ -1435,45 +1508,22 @@ function calcQuality(d, type) {
   } else if (cloudLow > 12) {
     quality -= 3;
   }
-  // 低云很少 → 加分（地平线清晰）
   if (cloudLow < 8) quality += 4;
 
-  // === 4. 湿度倒U曲线（精细版） ===
-  if (h < 10) quality -= 25;       // 太干 → 颜色寡淡
-  else if (h < 18) quality -= 16;
-  else if (h < 25) quality -= 8;
-  else if (h >= 32 && h <= 58) quality += 7; // ★ 最佳湿度区间
-  else if (h <= 65) quality += 4;
-  else if (h <= 72) quality -= 2;
-  else if (h <= 80) quality -= 6;
-  else if (h <= 88) quality -= 14;
-  else quality -= 24;
-
-  // === 5. 能见度（空气质量直接体现） ===
-  if (v < 1000) quality -= 40;     // 浓雾
-  else if (v < 2000) quality -= 28;
-  else if (v < 3500) quality -= 16;
-  else if (v < 5000) quality -= 8;
-  else if (v < 7000) quality -= 3;
-  else if (v >= 15000) quality += 8;  // 超通透
-  else if (v >= 10000) quality += 4;  // 通透
-
-  // === 6. 联合惩罚（空气质量的综合效应） ===
-  // 高湿+低能见度 = 雾/霾
+  // === 4. 联合惩罚（保留原版，捕获极端组合） ===
   if (h > 70 && v < 4000) quality -= 14;
   if (h > 82 && v < 6000) quality -= 10;
-  // 低湿+低能见度 = 霾/沙尘（不含雾）
   if (h < 50 && v < 3000) quality -= 8;
-  // 低湿+高能见度+中等云 = 最清澈的晚霞条件
   if (h >= 25 && h <= 55 && v > 10000 && cloudMH >= 15 && cloudMH <= 55) {
     quality += 6;
   }
 
-  // === 7. 气溶胶间接评分（基于能见度+湿度+云量的联合推断） ===
-  // 能见度在 8-15km 且湿度适中 → 气溶胶少，通透度好
-  if (v >= 8000 && v <= 15000 && h >= 30 && h <= 60) quality += 4;
-  // 能见度 > 15km → 极低气溶胶，极致通透
-  if (v > 15000 && h >= 20 && h <= 55) quality += 5;
+  // === 5. 太阳高度角季节性修正 ===
+  if (state.lat != null) {
+    const month = new Date().getMonth() + 1;
+    const solarCorrection = _calcSolarElevationCorrection(state.lat, month, type);
+    quality += solarCorrection * 0.8;
+  }
 
   return Math.max(0, Math.min(100, Math.round(quality)));
 }
