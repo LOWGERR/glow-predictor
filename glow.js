@@ -1,5 +1,4 @@
-/* === 朝霞晚霞预测 · 摄影助手 - v30 ===
- * v30: 修复评分全为100的bug — 初始值校准（100→50）、权重因子重新校准、各评分区间收窄 */
+/* === 朝霞晚霞预测 · 摄影助手 - v2 === */
 
 // ⚠️ 安全警告：API Key 硬编码在前端代码中，任何查看源码的人都能获取。
 // 建议：监控用量、设置配额限制、定期轮换 Key。
@@ -1357,7 +1356,6 @@ function _calcHumidityScore(humidity) {
 // 概率：霞光出现的可能性（%），主要看遮挡因素
 // 质量：霞光色彩壮观度（%），主要看散射条件
 function calcProbability(d, type, trendData) {
-  // ⚠️ 修复 v30: 初始值 100→50，校准各因子权重，使评分合理分布
   let prob = 50;
 
   const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh, cloudLow = d.cloudLow;
@@ -1365,84 +1363,78 @@ function calcProbability(d, type, trendData) {
   const h = d.humidity;
   const v = d.visibility;
 
-  // === 0. v4 云型分类评分 ===
+  // === 0. 云型分类评分（对概率的基础判定，权重缩小） ===
   const cloudType = _calcCloudTypeScore(cloudLow, cloudMid, cloudHigh, d.cloudCover);
   prob += cloudType.score * 0.3;
 
-  // === 0b. 能见度独立评分 ===
+  // === 0b. 能见度（独立天气因素） ===
   const visScore = _calcVisibilityScore(v);
-  prob += visScore.score * 0.25;
+  prob += visScore.score * 0.2;
 
-  // === 0c. 湿度评分 ===
+  // === 0c. 湿度 ===
   const humScore = _calcHumidityScore(h);
   prob += humScore * 0.15;
 
-  // === 0d. 云层垂直结构细化 ===
+  // === 0d. 云层垂直连续性（统一权重） ===
   const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
   prob += continuityScore * 0.3;
 
   const cloudBaseH = _calcCloudBaseHeight(d.temp, d.dewPoint);
   if (cloudBaseH !== null) {
-    if (cloudBaseH < 200 && cloudLow > 20) prob -= 6;
-    else if (cloudBaseH < 500 && cloudLow > 35) prob -= 3;
+    if (cloudBaseH < 200 && cloudLow > 20) prob -= 4;
+    else if (cloudBaseH < 500 && cloudLow > 35) prob -= 2;
   }
 
-  // === 1. 中高层云评分 ===
-  if (cloudMH < 3)  prob -= 42;
-  else if (cloudMH < 8) prob -= 28;
-  else if (cloudMH < 15) prob -= 14;
-  else if (cloudMH >= 18 && cloudMH <= 55) prob -= 0;
-  else if (cloudMH <= 65) prob -= 4;
-  else if (cloudMH <= 75) prob -= 10;
-  else if (cloudMH <= 85) prob -= 22;
-  else if (cloudMH <= 93) prob -= 35;
-  else prob -= 45;
+  // === 1. 中高层云评分（取消重叠加分，仅设惩罚梯度） ===
+  if (cloudMH < 3)  prob -= 30;
+  else if (cloudMH < 8) prob -= 20;
+  else if (cloudMH < 14) prob -= 10;
+  else if (cloudMH >= 16 && cloudMH <= 62) prob += 3;  // 理想范围微奖励
+  else if (cloudMH <= 75) prob -= 2;
+  else if (cloudMH <= 85) prob -= 12;
+  else if (cloudMH <= 93) prob -= 22;
+  else prob -= 30;
 
-  // === 2. 中高云叠加奖励 ===
-  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 55) {
-    prob += 8;
-  }
+  // === 2. 中高云叠加奖励（取消 — 云型分类和中高层段已覆盖） ===
 
   // === 3. 低云评分 + 遮挡中高层云的穿透惩罚 ===
   if (cloudLow > 75) {
-    prob -= 40;
-    if (cloudMH > 15) prob -= 12;
+    prob -= 25;
+    if (cloudMH > 15) prob -= 8;
   } else if (cloudLow > 55) {
-    prob -= 28;
-    if (cloudMH > 20) prob -= 6;
-  } else if (cloudLow > 35) {
     prob -= 15;
+    if (cloudMH > 20) prob -= 4;
+  } else if (cloudLow > 35) {
+    prob -= 7;
   } else if (cloudLow > 18) {
-    prob -= 6;
-  } else if (cloudLow <= 5) {
-    prob += 2;
+    prob -= 3;
   } else {
-    prob += 1;
+    prob += 2;
   }
 
   // === 4. 降水概率 ===
-  if (d.precipProb > 75) prob -= 40;
-  else if (d.precipProb > 55) prob -= 25;
-  else if (d.precipProb > 30) prob -= 15;
-  else if (d.precipProb > 12) prob -= 8;
+  if (d.precipProb > 75) prob -= 28;
+  else if (d.precipProb > 55) prob -= 18;
+  else if (d.precipProb > 30) prob -= 8;
+  else if (d.precipProb > 12) prob -= 3;
   else prob += 2;
 
   // === 5. 总云量极端情况 ===
-  if (d.cloudCover > 95) prob -= 25;
-  if (d.cloudCover < 5 && cloudMH < 5) prob -= 15;
+  if (d.cloudCover > 95) prob -= 18;
+  if (d.cloudCover < 5 && cloudMH < 5) prob -= 10;
 
   // === 6. 趋势评分 ===
   if (trendData && trendData.cloudTrend != null) {
     if (type === 'morning') {
-      if (trendData.preEventTrend < -3 && trendData.preEventTrend > -15) prob += 12;
-      else if (trendData.preEventTrend < -1 && trendData.preEventTrend >= -3) prob += 6;
-      else if (trendData.preEventTrend > 15) prob -= 8;
-      if (trendData.lowCloudTrend < -5 && cloudLow < 40) prob += 6;
+      if (trendData.preEventTrend < -3 && trendData.preEventTrend > -15) prob += 8;
+      else if (trendData.preEventTrend < -1 && trendData.preEventTrend >= -3) prob += 4;
+      else if (trendData.preEventTrend > 15) prob -= 5;
+      if (trendData.lowCloudTrend < -5 && cloudLow < 40) prob += 4;
     } else {
-      if (Math.abs(trendData.preEventTrend) < 5) prob += 8;
-      else if (trendData.preEventTrend > 0 && trendData.preEventTrend <= 8) prob += 5;
-      if (trendData.highTrend > 2 && trendData.highTrend < 12) prob += 6;
-      else if (Math.abs(trendData.preEventTrend) > 20) prob -= 8;
+      if (Math.abs(trendData.preEventTrend) < 5) prob += 5;
+      else if (trendData.preEventTrend > 0 && trendData.preEventTrend <= 8) prob += 3;
+      if (trendData.highTrend > 2 && trendData.highTrend < 12) prob += 4;
+      else if (Math.abs(trendData.preEventTrend) > 20) prob -= 5;
     }
   }
 
@@ -1457,7 +1449,6 @@ function calcProbability(d, type, trendData) {
 }
 
 function calcQuality(d, type) {
-  // ⚠️ 修复 v30: 初始值 100→50，校准各因子权重
   let quality = 50;
 
   const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh, cloudLow = d.cloudLow;
@@ -1465,71 +1456,67 @@ function calcQuality(d, type) {
   const h = d.humidity;
   const v = d.visibility;
 
-  // === 0. v4 云型分类评分（质量维度权重 x0.6） ===
+  // === 0. 云型分类评分（质量维度核心） ===
   const cloudType = _calcCloudTypeScore(cloudLow, cloudMid, cloudHigh, d.cloudCover);
-  quality += cloudType.score * 0.6;
+  quality += cloudType.score * 0.5;
 
-  // === 0b. 能见度独立评分（质量维度权重 x0.4） ===
+  // === 0b. 能见度（质量维度，通透度直接影响色彩饱和） ===
   const visScore = _calcVisibilityScore(v);
-  quality += visScore.score * 0.4;
+  quality += visScore.score * 0.35;
 
-  // === 0c. 湿度评分（质量维度权重 x0.25） ===
+  // === 0c. 湿度（适中湿度助散射，过高/过低都差） ===
   const humScore = _calcHumidityScore(h);
   quality += humScore * 0.25;
 
-  // === 0d. 云层垂直结构细化 ===
+  // === 0d. 云层垂直连续性（统一权重） ===
   const continuityScore = _calcCloudContinuity(cloudMid, cloudHigh);
-  quality += continuityScore;
+  quality += continuityScore * 0.4;
 
   const cloudBaseH = _calcCloudBaseHeight(d.temp, d.dewPoint);
   if (cloudBaseH !== null) {
-    if (cloudBaseH < 200 && cloudLow > 20) quality -= 8;
-    else if (cloudBaseH < 500 && cloudLow > 35) quality -= 4;
-    else if (cloudBaseH > 2000 && cloudMH >= 15) quality += 3;
+    if (cloudBaseH < 200 && cloudLow > 20) quality -= 5;
+    else if (cloudBaseH < 500 && cloudLow > 35) quality -= 3;
+    else if (cloudBaseH > 2000 && cloudMH >= 15) quality += 2;
   }
 
-  // === 1. 中高层云：色彩载体 ===
-  if (cloudMH < 3)  quality -= 52;
-  else if (cloudMH < 8) quality -= 35;
-  else if (cloudMH < 15) quality -= 18;
-  else if (cloudMH >= 18 && cloudMH <= 55) quality += 10;
-  else if (cloudMH <= 65) quality -= 4;
-  else if (cloudMH <= 72) quality -= 8;
-  else if (cloudMH <= 82) quality -= 18;
-  else if (cloudMH <= 92) quality -= 32;
-  else quality -= 48;
+  // === 1. 中高层云：色彩载体（取消重复奖励区间） ===
+  if (cloudMH < 3)  quality -= 35;
+  else if (cloudMH < 8) quality -= 24;
+  else if (cloudMH < 15) quality -= 12;
+  else if (cloudMH >= 18 && cloudMH <= 58) quality += 5;
+  else if (cloudMH <= 70) quality -= 1;
+  else if (cloudMH <= 82) quality -= 8;
+  else if (cloudMH <= 92) quality -= 20;
+  else quality -= 32;
 
-  // === 2. 中高云叠加奖励 ===
-  if (cloudMid > 10 && cloudHigh > 10 && cloudMH <= 55) {
-    quality += 8;
-  }
+  // === 2. 中高云叠加奖励（取消 — 云型分类+连续性已覆盖） ===
 
   // === 3. 低云遮挡关系 ===
   if (cloudLow > 70) {
-    quality -= 30;
-    if (cloudMH > 20) quality -= 10;
+    quality -= 20;
+    if (cloudMH > 20) quality -= 7;
   } else if (cloudLow > 50) {
-    quality -= 22;
-  } else if (cloudLow > 30) {
     quality -= 12;
-  } else if (cloudLow > 12) {
+  } else if (cloudLow > 30) {
     quality -= 5;
+  } else if (cloudLow > 12) {
+    quality -= 2;
   }
   if (cloudLow < 8) quality += 3;
 
-  // === 4. 联合惩罚（保留原版，捕获极端组合） ===
-  if (h > 75 && v < 4000) quality -= 18;
-  if (h > 82 && v < 6000) quality -= 16;
-  if (h < 50 && v < 3000) quality -= 10;
+  // === 4. 联合惩罚（保留极端组合修正） ===
+  if (h > 70 && v < 4000) quality -= 10;
+  if (h > 82 && v < 6000) quality -= 7;
+  if (h < 50 && v < 3000) quality -= 5;
   if (h >= 25 && h <= 55 && v > 10000 && cloudMH >= 15 && cloudMH <= 55) {
-    quality += 5;
+    quality += 4;
   }
 
-  // === 5. 太阳高度角季节性修正 ===
+  // === 5. 太阳高度角季节性修正（权重降低） ===
   if (state.lat != null) {
     const month = new Date().getMonth() + 1;
     const solarCorrection = _calcSolarElevationCorrection(state.lat, month, type);
-    quality += solarCorrection * 0.6;
+    quality += solarCorrection * 0.5;
   }
 
   return Math.max(0, Math.min(100, Math.round(quality)));
@@ -1768,36 +1755,33 @@ function calcScore(d, type, trendData) {
   const prob = calcProbability(d, type, trendData);
   const quality = calcQuality(d, type);
 
-  // === 评分机制（0-100 分制）===
-  // 基础分：概率与质量的加权几何平均（偏向严格，避免虚高）
+  // === 评分机制 v31（0-100 分制）===
+  // 基础分：概率与质量的加权几何平均
+  //   几何平均惩罚"高概率 + 低质量"的不一致情况（厚云有概率但不出彩）
   //   权重：概率 45% + 质量 55%（质量对最终出片影响更大）
   const baseScore = Math.pow(prob, 0.45) * Math.pow(quality, 0.55);
 
-  // 趋势修正：云层变化方向对霞光持续性有显著影响
+  // 趋势修正：云层变化方向对霞光持续性有影响
   let trendBonus = 0;
   if (trendData && trendData.cloudTrend != null) {
     if (type === 'morning') {
-      // 朝霞：日出前云量适度下降预示通透
       if (trendData.preEventTrend < -2 && trendData.preEventTrend > -12) trendBonus += 5;
-      // 日出后低云快速消散预示地平线清晰
       if (trendData.lowCloudTrend < -4 && d.cloudLow < 35) trendBonus += 3;
     } else {
-      // 晚霞：日落前云量稳定或缓慢增厚预示延续
       if (Math.abs(trendData.preEventTrend) < 4) trendBonus += 4;
       else if (trendData.preEventTrend > 0 && trendData.preEventTrend <= 6) trendBonus += 3;
-      // 高层云日落后继续增厚预示晚霞延长
       if (trendData.highTrend > 1 && trendData.highTrend < 10) trendBonus += 3;
     }
   }
 
-  // AOD 通透度额外加成（极致通透时小幅加分）
+  // AOD 通透度额外加成（极致通透 + 有云 = 最佳条件）
   const aodProxy = _calcAODProxy(d.visibility, d.humidity, d.cloudLow);
   if (aodProxy < 0.08 && Math.max(d.cloudMid, d.cloudHigh) >= 12) {
-    trendBonus += 2; // 极致通透 + 有云 = 最佳条件
+    trendBonus += 2;
   }
 
-  // 综合得分 = 基础分 × 70% + 趋势修正 × 30%（上限 100）
-  let score = Math.round(baseScore * 0.7 + Math.min(trendBonus, 15) * (100 / 15) * 0.3);
+  // 综合得分 = 基础分 × 75% + 趋势修正 × 25%（上限 100）
+  let score = Math.round(baseScore * 0.75 + Math.min(trendBonus, 15) * (100 / 15) * 0.25);
   return Math.max(0, Math.min(100, score));
 }
 
