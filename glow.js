@@ -1994,8 +1994,10 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
       </div>
       ${tips ? `<div class="card-tips">${tips}</div>` : ''}
       ${chartSvg ? `<div class="card-section-label">📈 云层趋势</div>${chartSvg}` : ''}
-      <button class="nearby-btn" onclick="openNearbySearch('${type}')">📷 附近摄影点</button>
-      <button class="share-btn" onclick="sharePrediction(${score}, '${type}', '${timeRange}', '${verdictText}')">📤 分享预测</button>
+      <div class="btn-row">
+        <button class="nearby-btn" onclick="openNearbySearch('${type}')">📷 附近摄影点</button>
+        <button class="share-btn" onclick="sharePrediction(${score}, '${type}', '${timeRange}', '${verdictText}')">📤 分享预测</button>
+      </div>
       <div class="data-source">🌐 多模型集成 (${getSourceLabel()})</div>
     </div>
   </div>`;
