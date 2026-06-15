@@ -693,63 +693,8 @@ body {
     border-top-color: rgba(0,0,0,0.08);
   }
 
-  .map-modal {
-    background: #fff;
-  }
-
-  .map-header {
-    background: #f5f5f7;
-    border-bottom-color: rgba(0,0,0,0.1);
-  }
-
-  .map-title {
-    color: #1d1d1f;
-  }
-
-  .map-search-container {
-    background: #f5f5f7;
-    border-bottom-color: rgba(0,0,0,0.1);
-  }
-
-  .map-search-container input {
-    background: #fff;
-    border-color: #d1d1d6;
-    color: #1d1d1f;
-  }
-
-  .map-search-container input:focus {
-    border-color: var(--accent);
-  }
-
-  .map-search-results {
-    background: #f5f5f7;
-    border-bottom-color: rgba(0,0,0,0.1);
-  }
-
-  .map-search-results .result-item {
-    border-bottom-color: rgba(0,0,0,0.06);
-    color: #1d1d1f;
-  }
-
-  .map-search-results .result-name {
-    color: #1d1d1f;
-  }
-
-  .map-search-results .result-detail {
-    color: #6e6e73;
-  }
-
-  .map-footer {
-    background: #f5f5f7;
-    border-top-color: rgba(0,0,0,0.1);
-  }
-
-  .nearby-categories {
-    background: #f5f5f7;
-    border-bottom-color: rgba(0,0,0,0.1);
-  }
   .nearby-cat-btn {
-    background: #fff;
+    background: transparent;
     border-color: #d1d1d6;
     color: #1d1d1f;
   }
@@ -758,18 +703,6 @@ body {
     border-color: #007aff;
     color: #fff;
   }
-  .nearby-result-item {
-    border-bottom-color: rgba(0,0,0,0.06);
-  }
-  .nearby-result-name { color: #1d1d1f; }
-  .nearby-result-dist { color: #6e6e73; }
-  .nearby-modal {
-    background: #fff;
-  }
-  .nearby-header {
-    background: #f5f5f7;
-    border-bottom-color: rgba(0,0,0,0.1);
-  }
 }
 
 /* === 地图选择器弹窗 === */
@@ -777,7 +710,7 @@ body {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: #0a0a14;
+  background: var(--bg);
   display: flex;
   flex-direction: column;
 }
@@ -785,7 +718,7 @@ body {
   display: flex;
   align-items: center;
   padding: 10px 12px;
-  background: #111128;
+  background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -809,7 +742,7 @@ body {
   display: flex;
   padding: 8px 12px;
   gap: 6px;
-  background: #111128;
+  background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -818,7 +751,7 @@ body {
   height: 36px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: #1a1a38;
+  background: var(--card-bg2);
   color: var(--text);
   padding: 0 12px;
   font-size: 0.85rem;
@@ -840,7 +773,7 @@ body {
 .map-search-results {
   max-height: 200px;
   overflow-y: auto;
-  background: #111128;
+  background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -854,7 +787,7 @@ body {
 }
 .map-search-results .result-name {
   font-weight: 600;
-  color: #fff;
+  color: var(--text);
   font-size: 0.85rem;
 }
 .map-search-results .result-detail {
@@ -871,7 +804,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: #111128;
+  background: var(--card-bg);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -896,7 +829,7 @@ body {
   left: 0;
   right: 0;
   max-height: 60vh;
-  background: #0a0a14;
+  background: var(--bg);
   border-radius: 16px 16px 0 0;
   z-index: 2000;
   display: flex;
@@ -908,11 +841,12 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  background: #111128;
+  background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   border-radius: 16px 16px 0 0;
   font-weight: 600;
   font-size: 0.95rem;
+  color: var(--text);
 }
 .nearby-close-btn {
   background: none;
@@ -927,7 +861,7 @@ body {
   gap: 6px;
   padding: 10px 14px;
   overflow-x: auto;
-  background: #111128;
+  background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   -webkit-overflow-scrolling: touch;
@@ -954,6 +888,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 8px 14px;
+  background: var(--bg);
 }
 .nearby-result-item {
   display: flex;
@@ -965,6 +900,7 @@ body {
 .nearby-result-name {
   font-weight: 500;
   font-size: 0.85rem;
+  color: var(--text);
 }
 .nearby-result-dist {
   font-size: 0.72rem;
@@ -993,44 +929,4 @@ body {
 ::-webkit-scrollbar-thumb {
   background: rgba(255,255,255,0.1);
   border-radius: 2px;
-}
-
-/* 附近摄影点 + 分享按钮行 - v31 fix */
-.btn-row {
-  display: flex;
-  gap: 10px;
-  margin-top: 12px;
-}
-.btn-row .nearby-btn,
-.btn-row .share-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px 10px;
-  border: none;
-  border-radius: 10px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
-  -webkit-tap-highlight-color: transparent;
-}
-.btn-row .nearby-btn:active,
-.btn-row .share-btn:active {
-  transform: scale(0.97);
-}
-.btn-row .nearby-btn {
-  background: var(--card-bg-alt, #f0f0f5);
-  color: var(--text-primary, #1d1d1f);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-.btn-row .share-btn {
-  background: #007aff;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(0,122,255,0.25);
-}
-.btn-row .share-btn:hover {
-  background: #0066d6;
 }
