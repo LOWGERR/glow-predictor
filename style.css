@@ -1,0 +1,996 @@
+/* === 全局 === */
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg: #0a0a14;
+  --card-bg: #111128;
+  --card-bg2: #1a1a38;
+  --text: #e8e8ec;
+  --text-dim: #8888a0;
+  --accent: #ff9800;
+  --accent2: #e040fb;
+  --border: rgba(255,255,255,0.08);
+  --good: #4caf50;
+  --bad: #ff4444;
+  --warn: #ff9800;
+  --great: #e040fb;
+  --blue: #64b5f6;
+  --radius: 16px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 12px 14px 40px;
+}
+
+/* 页面入场动画 */
+.header, .weather-card, .tab-bar, .prediction-card, .legend {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: fadeSlideUp 0.5s ease forwards;
+}
+.weather-card { animation-delay: 0.08s; }
+.tab-bar { animation-delay: 0.16s; }
+.prediction-card:nth-child(1) { animation-delay: 0.24s; }
+.prediction-card:nth-child(2) { animation-delay: 0.32s; }
+.legend { animation-delay: 0.40s; }
+
+@keyframes fadeSlideUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* === 头部 === */
+.header {
+  padding: 16px 4px 12px;
+  background: linear-gradient(180deg, rgba(255,152,0,0.06) 0%, transparent 100%);
+  border-radius: 0 0 20px 20px;
+}
+.header-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.header-badge {
+  font-size: 0.72rem;
+  color: var(--accent);
+  background: rgba(255,152,0,0.1);
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.location-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+.loc-name { font-weight: 500; color: #ccc; }
+
+.location-actions {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0 0;
+}
+.location-actions button {
+  flex: 1;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.location-actions button:active {
+  background: rgba(255,152,0,0.12);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* === 加载 === */
+.loading {
+  text-align: center;
+  padding: 30px 0;
+}
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 10px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading p { color: var(--text-dim); font-size: 0.82rem; }
+
+/* === 天气概览卡片 === */
+.weather-card {
+  background: linear-gradient(135deg, #1a1a35 0%, #15152e 100%);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+/* 微光呼吸边框 */
+.weather-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg,
+    rgba(255,152,0,0.25),
+    rgba(224,64,251,0.18),
+    rgba(100,181,246,0.25));
+  z-index: -1;
+  animation: shimmer 4s ease-in-out infinite alternate;
+}
+@keyframes shimmer {
+  0% { opacity: 0.4; }
+  100% { opacity: 0.9; }
+}
+.weather-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.weather-icon {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+.weather-temp {
+  font-size: 2rem;
+  font-weight: 300;
+  color: #fff;
+}
+.weather-desc {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.weather-details {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.wd-item {
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 8px;
+  text-align: center;
+}
+.wd-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+.wd-label span:first-child {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+.wd-val {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #ddd;
+}
+
+/* === 日出日落 === */
+.sun-times {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+.sun-block {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.sunrise-block { background: rgba(255,152,0,0.08); }
+.sunset-block  { background: rgba(224,64,251,0.08); }
+.sun-divider {
+  width: 1px;
+  background: var(--border);
+  margin: 0 2px;
+}
+.sun-icon { font-size: 1.5rem; flex-shrink: 0; }
+.sun-info { flex: 1; line-height: 1.3; }
+.sun-label { font-size: 0.7rem; color: var(--text-dim); }
+.sun-time { font-size: 1.1rem; font-weight: 600; }
+.sun-countdown { font-size: 0.7rem; color: var(--text-dim); margin-top: 1px; }
+.sun-countdown.urgent { color: var(--accent); font-weight: 600; }
+
+/* 太阳方位角 + 罗盘指引 */
+.azimuth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 10px;
+}
+.az-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+}
+.az-icon { font-size: 1rem; }
+.az-label { color: var(--text-dim); }
+.az-value { font-weight: 700; color: #fff; min-width: 40px; text-align: right; }
+.az-compass {
+  font-size: 1.4rem;
+  transition: transform 0.3s ease;
+  color: var(--accent);
+  user-select: none;
+}
+.photo-hour-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+/* 蓝调时刻左侧蓝色色条 */
+.photo-hour-item:nth-child(1),
+.photo-hour-item:nth-child(4) {
+  border-left: 3px solid #64b5f6;
+}
+/* 黄金时刻左侧金色色条 */
+.photo-hour-item:nth-child(2),
+.photo-hour-item:nth-child(3) {
+  border-left: 3px solid #ffca28;
+}
+.ph-icon { font-size: 0.9rem; flex-shrink: 0; }
+.ph-label { color: var(--text-dim); flex-shrink: 0; }
+.ph-time { color: #fff; font-weight: 500; margin-left: auto; white-space: nowrap; }
+
+/* 倒计时条 */
+.countdown-bar {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: rgba(255,152,0,0.08);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--accent);
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+.countdown-bar.urgent {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,152,0,0.15); }
+  50% { box-shadow: 0 0 16px 4px rgba(255,152,0,0.12); }
+}
+
+/* === 选项卡 === */
+.tab-bar {
+  display: flex;
+  margin-top: 14px;
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 3px;
+  border: 1px solid var(--border);
+}
+.tab-btn {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.tab-btn.active {
+  background: var(--accent);
+  color: #000;
+  font-weight: 700;
+}
+.tab-date {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+/* === 预测卡片 === */
+.predictions {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prediction-card {
+  background: var(--card-bg2);
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.card-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.card-type {
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+.card-type.morning { background: rgba(255,152,0,0.18); color: #ff9800; }
+.card-type.evening { background: rgba(224,64,251,0.18); color: #e040fb; }
+
+.card-body { padding: 12px 14px; }
+
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+/* 双指标（概率 × 质量） */
+.dual-score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.dual-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.dual-circle {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  position: relative;
+  background: conic-gradient(
+    var(--circle-color, var(--accent)) calc(var(--pct, 75) * 3.6deg),
+    rgba(255,255,255,0.06) 0deg
+  );
+}
+.dual-circle::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--card-bg2);
+}
+.dual-circle span {
+  position: relative;
+  z-index: 1;
+}
+.dual-label {
+  font-size: 0.55rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.dual-desc {
+  font-size: 0.55rem;
+  font-weight: 500;
+}
+.dual-vs {
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  opacity: 0.4;
+}
+
+.score-circle {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  position: relative;
+  background: conic-gradient(
+    var(--circle-color, var(--accent)) calc(var(--pct, 50) * 3.6deg),
+    rgba(255,255,255,0.06) 0deg
+  );
+}
+.score-circle::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--card-bg2);
+}
+.score-circle > div {
+  position: relative;
+  z-index: 1;
+}
+.score-circle .score-label {
+  font-size: 0.55rem;
+  font-weight: 500;
+  line-height: 1;
+}
+.score-text { flex: 1; }
+.score-verdict {
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+.score-desc {
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.factors {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.factor {
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.025);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+.factor:active {
+  transform: scale(0.96);
+  background: rgba(255,255,255,0.06);
+}
+.factor-name { display: block; color: var(--text-dim); margin-bottom: 1px; }
+.factor-val { font-weight: 600; }
+.factor-val.good { color: var(--good); }
+.factor-val.warn { color: var(--warn); }
+.factor-val.bad { color: var(--bad); }
+
+.card-tips {
+  padding: 8px 10px;
+  background: rgba(255,152,0,0.05);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: #bbb;
+  line-height: 1.6;
+}
+.card-tips strong { color: var(--accent); }
+
+/* === 图例（精简版） === */
+.legend {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: var(--card-bg);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.legend h3 { font-size: 0.78rem; margin-bottom: 6px; color: var(--text-dim); }
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  color: #999;
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.legend-trend {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  margin-top: 6px;
+  opacity: 0.7;
+}
+
+/* 最佳查看时机提示 */
+.timing-tip {
+  margin-top: 12px;
+  background: var(--card-bg);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.timing-tip summary {
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+.timing-tip summary::-webkit-details-marker { display: none; }
+.timing-tip summary::before {
+  content: '▶';
+  font-size: 0.6rem;
+  transition: transform 0.2s;
+  color: var(--text-dim);
+}
+.timing-tip[open] summary::before {
+  transform: rotate(90deg);
+}
+.tip-content {
+  padding: 0 14px 12px;
+  font-size: 0.75rem;
+  line-height: 1.7;
+  color: #bbb;
+}
+.tip-content p { margin-bottom: 6px; }
+.tip-content strong { color: var(--accent); }
+.tip-note {
+  margin-top: 8px !important;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim) !important;
+  font-size: 0.7rem !important;
+}
+
+/* === 日间模式适配 === */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f5f7;
+    --card-bg: #ffffff;
+    --card-bg2: #fafafa;
+    --text: #1d1d1f;
+    --text-dim: #6e6e73;
+    --border: rgba(0,0,0,0.08);
+    --good: #34c759;
+    --bad: #ff3b30;
+    --warn: #ff9500;
+    --great: #af52de;
+    --blue: #007aff;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .header {
+    background: linear-gradient(180deg, rgba(255,152,0,0.04) 0%, transparent 100%);
+  }
+
+  .weather-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f8fa 100%);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .weather-temp {
+    color: #1d1d1f;
+  }
+
+  .wd-item {
+    background: rgba(0,0,0,0.03);
+  }
+
+  .wd-val {
+    color: #1d1d1f;
+  }
+
+  .sunrise-block { background: rgba(255,152,0,0.06); }
+  .sunset-block  { background: rgba(224,64,251,0.06); }
+
+  .azimuth-row {
+    background: rgba(0,0,0,0.03);
+  }
+
+  .az-value {
+    color: #1d1d1f;
+  }
+
+  .photo-hour-item {
+    background: rgba(0,0,0,0.03);
+  }
+
+  .ph-time {
+    color: #1d1d1f;
+  }
+
+  .tab-bar {
+    background: var(--card-bg);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .prediction-card {
+    background: var(--card-bg2);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .card-header {
+    border-bottom-color: rgba(0,0,0,0.08);
+  }
+
+  .score-circle::after {
+    background: var(--card-bg2);
+  }
+
+  .factor {
+    background: rgba(0,0,0,0.03);
+  }
+
+  .factor:active {
+    background: rgba(0,0,0,0.06);
+  }
+
+  .card-tips {
+    background: rgba(255,152,0,0.04);
+    color: #4a4a4c;
+  }
+
+  .legend {
+    background: var(--card-bg);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .timing-tip {
+    background: var(--card-bg);
+    border-color: rgba(0,0,0,0.1);
+  }
+
+  .tip-content {
+    color: #4a4a4c;
+  }
+
+  .tip-note {
+    border-top-color: rgba(0,0,0,0.08);
+  }
+
+  .map-modal {
+    background: #fff;
+  }
+
+  .map-header {
+    background: #f5f5f7;
+    border-bottom-color: rgba(0,0,0,0.1);
+  }
+
+  .map-title {
+    color: #1d1d1f;
+  }
+
+  .map-search-container {
+    background: #f5f5f7;
+    border-bottom-color: rgba(0,0,0,0.1);
+  }
+
+  .map-search-container input {
+    background: #fff;
+    border-color: #d1d1d6;
+    color: #1d1d1f;
+  }
+
+  .map-search-container input:focus {
+    border-color: var(--accent);
+  }
+
+  .map-search-results {
+    background: #f5f5f7;
+    border-bottom-color: rgba(0,0,0,0.1);
+  }
+
+  .map-search-results .result-item {
+    border-bottom-color: rgba(0,0,0,0.06);
+    color: #1d1d1f;
+  }
+
+  .map-search-results .result-name {
+    color: #1d1d1f;
+  }
+
+  .map-search-results .result-detail {
+    color: #6e6e73;
+  }
+
+  .map-footer {
+    background: #f5f5f7;
+    border-top-color: rgba(0,0,0,0.1);
+  }
+
+  .nearby-categories {
+    background: #f5f5f7;
+    border-bottom-color: rgba(0,0,0,0.1);
+  }
+  .nearby-cat-btn {
+    background: #fff;
+    border-color: #d1d1d6;
+    color: #1d1d1f;
+  }
+  .nearby-cat-btn.active {
+    background: #007aff;
+    border-color: #007aff;
+    color: #fff;
+  }
+  .nearby-result-item {
+    border-bottom-color: rgba(0,0,0,0.06);
+  }
+  .nearby-result-name { color: #1d1d1f; }
+  .nearby-result-dist { color: #6e6e73; }
+  .nearby-modal {
+    background: #fff;
+  }
+  .nearby-header {
+    background: #f5f5f7;
+    border-bottom-color: rgba(0,0,0,0.1);
+  }
+}
+
+/* === 地图选择器弹窗 === */
+.map-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #0a0a14;
+  display: flex;
+  flex-direction: column;
+}
+.map-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background: #111128;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.map-cancel-btn, .map-confirm-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.map-confirm-btn { color: var(--blue); }
+.map-title {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text);
+}
+.map-search-container {
+  display: flex;
+  padding: 8px 12px;
+  gap: 6px;
+  background: #111128;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.map-search-container input {
+  flex: 1;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #1a1a38;
+  color: var(--text);
+  padding: 0 12px;
+  font-size: 0.85rem;
+  outline: none;
+}
+.map-search-container input:focus {
+  border-color: var(--accent);
+}
+.map-search-container button {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #000;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.map-search-results {
+  max-height: 200px;
+  overflow-y: auto;
+  background: #111128;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.map-search-results .result-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.map-search-results .result-item:active {
+  background: rgba(255,152,0,0.1);
+}
+.map-search-results .result-name {
+  font-weight: 600;
+  color: #fff;
+  font-size: 0.85rem;
+}
+.map-search-results .result-detail {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.map-container {
+  flex: 1;
+  min-height: 0;
+}
+.map-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #111128;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.map-coords {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.map-locate-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+/* 附近摄影点弹窗 */
+.nearby-modal {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 60vh;
+  background: #0a0a14;
+  border-radius: 16px 16px 0 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.4);
+}
+.nearby-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: #111128;
+  border-bottom: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.nearby-close-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.nearby-categories {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px;
+  overflow-x: auto;
+  background: #111128;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+.nearby-cat-btn {
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.nearby-cat-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+  font-weight: 600;
+}
+.nearby-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 14px;
+}
+.nearby-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.nearby-result-name {
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+.nearby-result-dist {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+.nearby-empty {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+/* 内联样式覆盖（JS使用） */
+.hidden { display: none !important; }
+.text-accent { color: var(--accent); }
+.text-good { color: var(--good); }
+.text-bad { color: var(--bad); }
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+}
