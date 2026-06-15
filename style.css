@@ -704,14 +704,11 @@ body {
     color: #fff;
   }
 
-  .btn-row .nearby-btn {
-    background: #f0f0f5;
-    color: #1d1d1f;
-    border-color: #d1d1d6;
-  }
+  .btn-row .nearby-btn,
   .btn-row .share-btn {
-    background: #007aff;
-    color: #fff;
+    background: transparent;
+    color: #8e8e93;
+    border-color: rgba(0,0,0,0.12);
   }
 }
 
@@ -990,11 +987,11 @@ body {
   border-color: var(--accent);
 }
 
-/* 附近摄影点 + 分享按钮行 */
+/* 附近摄影点 + 分享按钮行（弱化显示） */
 .btn-row {
   display: flex;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 10px;
 }
 .btn-row .nearby-btn,
 .btn-row .share-btn {
@@ -1002,29 +999,35 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 12px 10px;
+  gap: 4px;
+  padding: 8px 8px;
   border: none;
-  border-radius: 10px;
-  font-size: 0.78rem;
-  font-weight: 600;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 400;
   cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
+  transition: background 0.2s;
   -webkit-tap-highlight-color: transparent;
-}
-.btn-row .nearby-btn:active,
-.btn-row .share-btn:active {
-  transform: scale(0.97);
+  opacity: 0.65;
 }
 .btn-row .nearby-btn {
-  background: var(--card-bg2);
-  color: var(--text);
+  background: transparent;
+  color: var(--text-secondary);
   border: 1px solid var(--border);
 }
 .btn-row .share-btn {
-  background: var(--blue);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(0,122,255,0.25);
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* 数据来源（多模型标签）弱化 */
+.data-source {
+  margin-top: 6px;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  opacity: 0.55;
+  text-align: center;
 }
 
 /* 滚动条美化 */
