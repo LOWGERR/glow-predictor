@@ -994,3 +994,43 @@ body {
   background: rgba(255,255,255,0.1);
   border-radius: 2px;
 }
+
+/* 附近摄影点 + 分享按钮行 - v31 fix */
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.btn-row .nearby-btn,
+.btn-row .share-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 10px;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-row .nearby-btn:active,
+.btn-row .share-btn:active {
+  transform: scale(0.97);
+}
+.btn-row .nearby-btn {
+  background: var(--card-bg-alt, #f0f0f5);
+  color: var(--text-primary, #1d1d1f);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.btn-row .share-btn {
+  background: #007aff;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0,122,255,0.25);
+}
+.btn-row .share-btn:hover {
+  background: #0066d6;
+}
