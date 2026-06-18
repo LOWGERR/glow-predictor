@@ -1468,6 +1468,104 @@ function _calcSolarElevationCorrection(lat, month, type) {
 
 
 // ════════════════════════════════════════════════════════════
+// === 云层趋势图：SVG 折线图，显示日出/日落前后 ±2h 的云量趋势 ===
+function buildCloudTrendChart(data, di, type) {
+  const daily = data.daily;
+  const hourly = data.hourly;
+  const dateStr = daily.time[di];
+  if (!dateStr) return '';
+
+  const eventISO = type === 'morning' ? daily.sunrise[di] : daily.sunset[di];
+  if (!eventISO) return '';
+  const eventDate = new Date(eventISO);
+  const eventHour = eventDate.getHours();
+
+  const indices = hourly.time
+    .map((t, i) => ({ i, h: new Date(t).getHours() }))
+    .filter(x => hourly.time[x.i].startsWith(dateStr));
+
+  const windowStart = eventHour - 2;
+  const windowEnd = eventHour + 2;
+  const windowIndices = indices
+    .filter(x => x.h >= windowStart && x.h <= windowEnd)
+    .sort((a, b) => a.h - b.h);
+
+  if (windowIndices.length < 2) return '';
+
+  const series = [
+    { key: 'cloud_cover', label: '总云量', color: '#8888cc' },
+    { key: 'cloud_cover_mid', label: '中云', color: '#ff9800' },
+    { key: 'cloud_cover_high', label: '高云', color: '#e040fb' },
+  ];
+
+  let minVal = 0, maxVal = 100;
+  const W = 240, H = 60, PAD = { top: 6, bottom: 14, left: 26, right: 10 };
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+  const xScale = (idx) => PAD.left + (idx / (windowIndices.length - 1)) * plotW;
+  const yScale = (v) => PAD.top + plotH - ((v - minVal) / (maxVal - minVal)) * plotH;
+
+  let paths = '';
+  series.forEach(s => {
+    const pts = windowIndices.map((wi, idx) => {
+      const v = hourly[s.key][wi.i] ?? 50;
+      return `${xScale(idx)},${yScale(v)}`;
+    });
+    const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p).join(' ');
+    const fillId = `fill_${s.key.replace(/_/g,'')}`;
+    paths += `<defs><linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${s.color}" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="${s.color}" stop-opacity="0.02"/>
+    </linearGradient></defs>`;
+    const bottomY = yScale(0);
+    const fillD = `M${pts[0].split(',')[0]},${bottomY} L${pts.map(p => p).join(' L')} L${pts[pts.length-1].split(',')[0]},${bottomY} Z`;
+    paths += `<path d="${fillD}" fill="url(#${fillId})" />`;
+    paths += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>`;
+    pts.forEach((p, i) => {
+      const [px, py] = p.split(',').map(Number);
+      paths += `<circle cx="${px}" cy="${py}" r="1.8" fill="${s.color}" opacity="0.9"/>`;
+    });
+  });
+
+  let xLabels = '';
+  windowIndices.forEach((wi, idx) => {
+    const label = `${wi.h}:00`;
+    const x = xScale(idx);
+    xLabels += `<text x="${x}" y="${H - 2}" text-anchor="middle" font-size="7" fill="#666">${label}</text>`;
+  });
+
+  const yTicks = [0, 25, 50, 75, 100];
+  let yLabels = '';
+  yTicks.forEach(v => {
+    const y = yScale(v);
+    yLabels += `<text x="${PAD.left - 3}" y="${y + 2.5}" text-anchor="end" font-size="6.5" fill="#555">${v}</text>`;
+    yLabels += `<line x1="${PAD.left}" y1="${y}" x2="${W - PAD.right}" y2="${y}" stroke="#222" stroke-width="0.5" stroke-dasharray="2,2" opacity="0.4"/>`;
+  });
+
+  const eventIdx = windowIndices.findIndex(wi => wi.h === eventHour);
+  if (eventIdx >= 0) {
+    const ex = xScale(eventIdx);
+    paths += `<line x1="${ex}" y1="${PAD.top}" x2="${ex}" y2="${H - PAD.bottom}" stroke="#ff6" stroke-width="1" stroke-dasharray="3,2" opacity="0.8"/>`;
+    paths += `<text x="${ex}" y="${PAD.top - 1}" text-anchor="middle" font-size="6.5" fill="#ff6" opacity="0.9">${type === 'morning' ? '🌅' : '🌇'}</text>`;
+  }
+
+  let legend = '';
+  series.forEach((s, i) => {
+    const lx = PAD.left + i * 58;
+    legend += `<line x1="${lx}" y1="${H + 10}" x2="${lx + 10}" y2="${H + 10}" stroke="${s.color}" stroke-width="2"/>`;
+    legend += `<text x="${lx + 13}" y="${H + 13.5}" font-size="6.5" fill="#999">${s.label}</text>`;
+  });
+
+  return `<div class="chart-container">
+    <svg width="${W}" height="${H + 26}" viewBox="0 0 ${W} ${H + 26}" style="display:block;margin:0 auto;max-width:100%">
+      ${yLabels}
+      ${paths}
+      ${xLabels}
+      ${legend}
+    </svg>
+  </div>`;
+}
+
 // === 云层趋势分析（扩展窗口 + 滑动平均） ===
 function getTrendData(data, di, type) {
   const daily = data.daily;
