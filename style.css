@@ -15,6 +15,7 @@
   --warn: #ff9800;
   --great: #e040fb;
   --blue: #64b5f6;
+  --text-secondary: #8888a0;
   --radius: 16px;
 }
 
@@ -25,6 +26,7 @@ body {
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
 }
 
 .app {
@@ -43,6 +45,7 @@ body {
 .tab-bar { animation-delay: 0.16s; }
 .prediction-card:nth-child(1) { animation-delay: 0.24s; }
 .prediction-card:nth-child(2) { animation-delay: 0.32s; }
+.prediction-card:nth-child(3) { animation-delay: 0.40s; }
 .legend { animation-delay: 0.40s; }
 
 @keyframes fadeSlideUp {
@@ -288,7 +291,7 @@ body {
   font-size: 0.82rem;
   color: var(--accent);
   font-weight: 500;
-  transition: all 0.3s ease;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .countdown-bar.urgent {
   animation: pulse-glow 2s ease-in-out infinite;
@@ -317,12 +320,13 @@ body {
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .tab-btn.active {
   background: var(--accent);
   color: #000;
   font-weight: 700;
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
 }
 .tab-date {
   text-align: center;
@@ -408,6 +412,10 @@ body {
   border-radius: 50%;
   background: var(--card-bg2);
 }
+.dual-circle {
+  filter: drop-shadow(0 0 4px rgba(255,255,255,0.08));
+  transition: filter 0.3s ease;
+}
 .dual-circle span {
   position: relative;
   z-index: 1;
@@ -429,6 +437,7 @@ body {
 
 .score-circle {
   width: 56px; height: 56px;
+  transition: all 0.4s ease;
   border-radius: 50%;
   display: flex;
   flex-direction: column;
@@ -484,10 +493,12 @@ body {
   font-size: 0.72rem;
   text-align: center;
   transition: all 0.2s ease;
+  border: 1px solid transparent;
 }
 .factor:active {
   transform: scale(0.96);
   background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.08);
 }
 .factor-name { display: block; color: var(--text-dim); margin-bottom: 1px; }
 .factor-val { font-weight: 600; }
@@ -597,6 +608,7 @@ body {
     --warn: #ff9500;
     --great: #af52de;
     --blue: #007aff;
+    --text-secondary: #8e8e93;
   }
 
   body {
@@ -683,6 +695,10 @@ body {
   .timing-tip {
     background: var(--card-bg);
     border-color: rgba(0,0,0,0.1);
+  }
+
+  .chart-container {
+    background: rgba(0,0,0,0.02);
   }
 
   .tip-content {
@@ -918,6 +934,41 @@ body {
   padding: 24px 0;
   color: var(--text-dim);
   font-size: 0.82rem;
+}
+
+/* 演示模式横幅 */
+.demo-banner {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 152, 0, 0.08);
+  border: 1px solid rgba(255, 152, 0, 0.2);
+  border-radius: 12px;
+  font-size: 0.78rem;
+  color: var(--accent);
+  text-align: center;
+  animation: fadeSlideUp 0.4s ease forwards;
+}
+
+/* 图表区域标题 */
+.card-section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin: 10px 0 6px;
+  padding: 0;
+}
+
+/* 云层趋势图容器 */
+.chart-container {
+  margin: 8px 0;
+  padding: 8px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+.chart-container svg {
+  display: block;
+  margin: 0 auto;
 }
 
 /* 内联样式覆盖（JS使用） */

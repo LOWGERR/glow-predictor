@@ -666,8 +666,8 @@ function showNearbyPOIOnMap(lat, long, name) {
         showIndoorMap: false
       });
       _mapInstance.on('click', (e) => {
-        _mapLat = e.longlat.getLat();
-        _mapLon = e.longlat.getLng();
+        _mapLat = e.lnglat.getLat();
+        _mapLon = e.lnglat.getLng();
         placeMarker(_mapLat, _mapLon);
         updateMapCoordsLabel();
       });
@@ -1944,7 +1944,7 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
     { name: '总云量', val: data.cloudCover + '%',
       cls: data.cloudCover > 85 ? 'bad' : data.cloudCover < 5 ? 'warn' : 'good' },
     { name: '湿度', val: data.humidity + '%',
-      cls: data.humidity > 85 ? 'bad' : data.humidity >= 32 && data.humidity <= 60 ? 'good' : data.humidity < 25 ? 'warn' : 'good' },
+      cls: data.humidity > 85 ? 'bad' : data.humidity >= 40 && data.humidity <= 60 ? 'good' : data.humidity < 30 ? 'warn' : 'warn' },
     { name: '降水概率', val: data.precipProb + '%',
       cls: data.precipProb > 30 ? 'bad' : data.precipProb > 10 ? 'warn' : 'good' },
     { name: '能见度', val: (data.visibility / 1000).toFixed(1) + 'km',
@@ -2126,7 +2126,7 @@ function renderDemo() {
   const now = new Date();
   const daily = { time: [], sunrise: [], sunset: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_probability_max: [] };
   const hourly = { time: [], cloud_cover: [], cloud_cover_low: [], cloud_cover_mid: [],
-    cloud_cover_high: [], relative_humidity_2m: [], precipitation_probability: [],
+    cloud_cover_high: [], relative_humidity_2m: [], dew_point_2m: [], precipitation_probability: [],
     visibility: [], temperature_2m: [], weather_code: [] };
 
   const scenarios = [
@@ -2154,8 +2154,7 @@ function renderDemo() {
     daily.precipitation_probability_max.push(sc.ppmax);
 
     for (let h = 0; h < 24; h++) {
-      const t = new Date(date);
-      t.setHours(h, 0, 0, 0);
+      const t = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), h, 0, 0));
       hourly.time.push(t.toISOString());
       const jitter = Math.sin(h / 4) * 8;
       hourly.cloud_cover.push(Math.min(100, Math.max(0, Math.round(sc.cc + jitter))));
@@ -2167,6 +2166,12 @@ function renderDemo() {
       hourly.visibility.push(Math.round(sc.vis + jitter * 180));
       hourly.temperature_2m.push(Math.round(sc.tmp + Math.sin(h / 6) * 4));
       hourly.weather_code.push(sc.wc);
+      // dew_point: approximate from temp and humidity (Magnus formula)
+      const a = 17.27, b = 237.7;
+      const rh = Math.max(1, sc.hum - jitter * 0.2) / 100;
+      const gamma = a * (sc.tmp + Math.sin(h / 6) * 4) / (b + (sc.tmp + Math.sin(h / 6) * 4)) + Math.log(rh);
+      const dewPt = b * gamma / (a - gamma);
+      hourly.dew_point_2m.push(Math.round(dewPt * 10) / 10);
     }
   }
 
