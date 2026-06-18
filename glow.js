@@ -1267,7 +1267,8 @@ function updateTabUI() {
       const idx = +b.dataset.tab;
       const dateStr = state.forecastData.daily.time[idx];
       if (dateStr) {
-        const d = new Date(dateStr + 'T00:00:00');
+        const parts = dateStr.split('-');
+        const d = new Date(+parts[0], +parts[1]-1, +parts[2]);
         const diff = Math.round((d - today) / 86400000);
         const weekday = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
         b.textContent = dayLabels[diff] || `${d.getMonth()+1}/${d.getDate()} ${weekday}`;
@@ -1287,11 +1288,11 @@ function updateTabUI() {
 }
 
 function formatTabDate(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
+  const parts = dateStr.split('-');
+  const d = new Date(+parts[0], +parts[1]-1, +parts[2]);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diff = Math.round((target - today) / 86400000);
+  const diff = Math.round((d - today) / 86400000);
   const weekday = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
   const mm = d.getMonth() + 1, dd = d.getDate();
   const datePart = `${mm}月${dd}日 ${weekday}`;
@@ -2584,10 +2585,8 @@ function renderDemo() {
     const dateStr = date.toISOString().slice(0, 10);
     daily.time.push(dateStr);
 
-    const sunriseD = new Date(date);
-    sunriseD.setHours(4, 46 + Math.floor(Math.random() * 15), 0, 0);
-    const sunsetD = new Date(date);
-    sunsetD.setHours(19, 35 + Math.floor(Math.random() * 20), 0, 0);
+    const sunriseD = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 5, 10 + Math.floor(Math.random() * 20), 0));
+    const sunsetD = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 18, 30 + Math.floor(Math.random() * 30), 0));
     daily.sunrise.push(sunriseD.toISOString());
     daily.sunset.push(sunsetD.toISOString());
 
