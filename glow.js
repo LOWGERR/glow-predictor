@@ -1468,6 +1468,80 @@ function _calcSolarElevationCorrection(lat, month, type) {
 
 
 // ════════════════════════════════════════════════════════════
+// === 云层趋势分析（扩展窗口 + 滑动平均） ===
+function getTrendData(data, di, type) {
+  const daily = data.daily;
+  const hourly = data.hourly;
+  const dateStr = daily.time[di];
+  if (!dateStr) return null;
+
+  const eventISO = type === 'morning' ? daily.sunrise[di] : daily.sunset[di];
+  if (!eventISO) return null;
+  const eventTime = new Date(eventISO);
+  const eventHour = eventTime.getHours() + eventTime.getMinutes() / 60;
+
+  const indices = hourly.time
+    .map((t, i) => ({ i, t }))
+    .filter(x => x.t.startsWith(dateStr))
+    .sort((a, b) => a.t.localeCompare(b.t));
+
+  if (indices.length < 3) return null;
+
+  let windowStart, windowEnd;
+  if (type === 'morning') { windowStart = eventHour - 3; windowEnd = eventHour + 1; }
+  else { windowStart = eventHour - 2; windowEnd = eventHour + 2; }
+
+  const windowPoints = indices.filter(x => {
+    const h = new Date(x.t).getHours() + new Date(x.t).getMinutes() / 60;
+    return h >= windowStart && h <= windowEnd;
+  }).map(x => ({
+    time: new Date(x.t),
+    cloudCover: hourly.cloud_cover[x.i],
+    cloudLow: hourly.cloud_cover_low[x.i],
+    cloudMid: hourly.cloud_cover_mid[x.i],
+    cloudHigh: hourly.cloud_cover_high[x.i],
+  }));
+
+  if (windowPoints.length < 3) return null;
+
+  function smooth(arr, w = 3) {
+    if (arr.length < w) return arr;
+    const r = [];
+    for (let i = 0; i < arr.length; i++) {
+      const s = Math.max(0, i - Math.floor(w / 2));
+      const e = Math.min(arr.length, i + Math.ceil(w / 2));
+      let sum = 0;
+      for (let j = s; j < e; j++) sum += arr[j];
+      r.push(sum / (e - s));
+    }
+    return r;
+  }
+
+  const smCloud = smooth(windowPoints.map(p => p.cloudCover));
+  const smLow = smooth(windowPoints.map(p => p.cloudLow));
+  const smHigh = smooth(windowPoints.map(p => p.cloudHigh));
+
+  function linearSlope(v) {
+    const n = v.length;
+    if (n < 2) return 0;
+    let sX = 0, sY = 0, sXY = 0, sX2 = 0;
+    for (let i = 0; i < n; i++) { sX += i; sY += v[i]; sXY += i * v[i]; sX2 += i * i; }
+    return (n * sXY - sX * sY) / (n * sX2 - sX * sX);
+  }
+
+  const eventIdx = windowPoints.findIndex(p => p.time >= eventTime);
+  let preEventTrend = 0;
+  if (eventIdx > 2) preEventTrend = linearSlope(smCloud.slice(0, eventIdx));
+
+  return {
+    cloudTrend: linearSlope(smCloud),
+    lowCloudTrend: linearSlope(smLow),
+    highTrend: linearSlope(smHigh),
+    preEventTrend,
+    windowSize: windowPoints.length,
+  };
+}
+
 // v35 评分引擎重构：公共辅助函数
 // ════════════════════════════════════════════════════════════
 
