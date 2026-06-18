@@ -2582,7 +2582,7 @@ function renderDemo() {
   for (let d = 0; d < 7; d++) {
     const date = new Date(now);
     date.setDate(date.getDate() + d);
-    const dateStr = date.toISOString().slice(0, 10);
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
     daily.time.push(dateStr);
 
     const sunriseD = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 5, 10 + Math.floor(Math.random() * 20), 0));
