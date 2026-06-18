@@ -576,18 +576,32 @@ function renderNearbyResults(category, items) {
   }
 
   document.getElementById('nearbyResults').innerHTML = items.map((p, i) => {
-    const safeName = p.name.replace(/'/g, "\\'");
+    const safeName = p.name.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
+    const distText = p.dist >= 1000 ? (p.dist/1000).toFixed(1) + 'km' : p.dist + 'm';
     return `
-      <div class="nearby-item" onclick="selectNearbyPOI(${p.lat}, ${p.long}, '${safeName}')">
+      <div class="nearby-item" data-lat="${p.lat}" data-lon="${p.long}" data-name="${safeName}">
         <span class="nearby-rank">${i+1}</span>
         <div class="nearby-info">
           <div class="nearby-name">${p.name} ${p.dirScore}</div>
-          <div class="nearby-detail">${p.dist}m · ${p.type || (category || '景点')}</div>
+          <div class="nearby-detail">${distText} · ${p.type || (category || '景点')}</div>
         </div>
-        <button class="nearby-nav-btn" onclick="event.stopPropagation();navigateToPOI(${p.lat}, ${p.long}, '${safeName}')" title="导航前往">🗺️</button>
+        <button class="nearby-nav-btn" title="导航前往">🗺️</button>
       </div>
     `;
   }).join('');
+
+  // 用事件委托替代内联 onclick（更安全、更高效）
+  const resultsEl = document.getElementById('nearbyResults');
+  resultsEl.onclick = (e) => {
+    const item = e.target.closest('.nearby-item');
+    if (!item) return;
+    const lat = +item.dataset.lat, lon = +item.dataset.lon, name = item.dataset.name;
+    if (e.target.closest('.nearby-nav-btn')) {
+      navigateToPOI(lat, lon, name);
+    } else {
+      selectNearbyPOI(lat, lon, name);
+    }
+  };
 }
 
 async function searchNearbyPOI(category) {
@@ -622,8 +636,14 @@ async function searchNearbyPOI(category) {
         const [long, lat] = p.location.split(',').map(Number);
         const dist = Math.round(distance(state.lat, state.lon, lat, long));
         const dir = bearing(state.lat, state.lon, lat, long);
-        const sunDir = _nearbyType === 'morning' ? 90 : 270;
-        const dirScore = Math.abs(dir - sunDir) <= 45 ? '⭐' : '';
+        // 用真实太阳方位角替代硬编码 90/270
+        let sunDir = _nearbyType === 'morning' ? 90 : 270;
+        if (state.forecastData?.daily?.time[state.activeTab] && state.lat != null) {
+          sunDir = _calcSolarAzimuth(state.lat, state.forecastData.daily.time[state.activeTab],
+            _nearbyType === 'morning' ? 'sunrise' : 'sunset');
+        }
+        const dirDiff = Math.abs(dir - sunDir);
+        const dirScore = dirDiff <= 45 ? '⭐' : dirDiff <= 90 ? '👍' : '';
         return { ...p, lat, long, dist, dir, dirScore };
       })
       .sort((a, b) => {
@@ -2027,7 +2047,51 @@ function calcScore(d, type, trendData) {
   const finalScore = Math.max(0, Math.min(100, Math.round(baseScore)));
   return { score: finalScore, prob, quality, confidence };
 }
+// === 一键分享预测卡片 ===
+async function sharePrediction(score, type, timeRange, verdictText) {
+  const typeLabel = type === 'morning' ? '朝霞' : '晚霞';
+  const locName = state.name || '当前位置';
+  const dateStr = state.forecastData?.daily?.time[state.activeTab] || '';
+  const dateLabel = dateStr ? new Date(dateStr).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }) : '';
 
+  // 获取置信度（从评分结果中获取）
+  const confText = '';
+
+  const url = window.location.href;
+  const text = `🌅 ${typeLabel}预测 · ${locName}
+📅 ${dateLabel}
+⭐ 综合评分：${score}/100
+💬 ${verdictText}
+⏰ 时段：${timeRange}
+
+🔗 ${url}
+📊 数据来源：Open-Meteo ECMWF+GFS`;
+
+  // 优先使用原生分享（iOS Safari / Android Chrome）
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: `${typeLabel}预测 · ${score}/100`,
+        text: text,
+        url: window.location.href
+      });
+      return;
+    } catch(e) {
+      if (e.name === 'AbortError') return; // 用户取消
+    }
+  }
+
+  // 降级：复制到剪贴板
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('✅ 预测信息已复制到剪贴板');
+  } catch(e) {
+    // 最终降级：prompt 让用户手动复制
+    prompt('请长按复制以下预测信息：', text);
+  }
+}
+
+// === 摄影建议 ===
 function buildTips(d, type) {
   const tips = [];
   const cloudMH = Math.max(d.cloudMid, d.cloudHigh);
