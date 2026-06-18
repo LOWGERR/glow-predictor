@@ -303,15 +303,23 @@ body {
 
 /* === 选项卡 === */
 .tab-bar {
-  display: flex;
   margin-top: 14px;
   background: var(--card-bg);
   border-radius: 12px;
   padding: 3px;
   border: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tab-bar::-webkit-scrollbar { display: none; }
+.tab-scroll {
+  display: flex;
+  min-width: max-content;
 }
 .tab-btn {
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 52px;
   padding: 10px 0;
   border-radius: 10px;
   border: none;
@@ -483,7 +491,7 @@ body {
 .factors {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
+  gap: 4px;
   margin-bottom: 8px;
 }
 .factor {

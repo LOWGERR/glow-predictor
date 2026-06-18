@@ -6,6 +6,7 @@ const AMAP_KEY = '9a559408bacf3862588c08ad3a273edc';
 const AMAP_SEARCH_URL = 'https://restapi.amap.com/v3/place/text';
 const GEO_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+const AIR_QUALITY_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality';
 
 // DOM
 let $loading, $predictions;
@@ -27,7 +28,34 @@ const state = {
   // 多模型集成
   ensembleData: null,     // 合并后的数据
   modelSources: [],       // 成功请求的模型列表
+  // v33 新增
+  aodData: null,          // 气溶胶光学厚度数据
+  sunPathData: null,      // 太阳光路采样数据
+  pressureTrend: null,    // 气压趋势
 };
+
+// v33: 动态生成选项卡
+function generateTabs(days) {
+  const scroll = document.getElementById('tabScroll');
+  if (!scroll) return;
+  const labels = ['今天', '明天', '后天'];
+  scroll.innerHTML = '';
+  for (let i = 0; i < days; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (i === 0 ? ' active' : '');
+    btn.dataset.tab = i;
+    if (i < 3) {
+      btn.textContent = labels[i];
+    } else {
+      // 显示星期几
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      const weekday = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+      btn.textContent = weekday;
+    }
+    scroll.appendChild(btn);
+  }
+}
 
 // === 初始化 ===
 function init() {
@@ -44,6 +72,8 @@ function init() {
     }
   } catch(e) {}
 
+  // v33: 动态生成7天选项卡
+  generateTabs(7);
   $tabBar.addEventListener('click', handleTabClick);
   // $locateBtn.addEventListener('click', autoLocate);
   document.getElementById('locateBtn').addEventListener('click', autoLocate);
@@ -841,6 +871,188 @@ async function getAmapRegeo(lat, lon) {
   return null;
 }
 
+
+// ════════════════════════════════════════════════════════════
+// 🆕 v33 新增：气溶胶光学厚度(AOD)数据获取
+// ════════════════════════════════════════════════════════════
+// AOD 是预测霞光色彩饱和度的最重要单一特征（Henriksson 2019）
+// Open-Meteo Air Quality API 提供 AOD 550nm 数据，免费无 key
+async function fetchAODData(lat, lon) {
+  try {
+    const params = new URLSearchParams({
+      latitude: lat,
+      longitude: lon,
+      hourly: 'aerosol_optical_depth_550nm,dust,uv_index',
+      timezone: 'auto',
+      forecast_days: 7,
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${AIR_QUALITY_URL}?${params}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e) {
+    console.warn('AOD 数据获取失败:', e.message);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// 🆕 v33 新增：太阳光路采样
+// ════════════════════════════════════════════════════════════
+// 沿太阳方位角方向采样远处云层数据
+// 原理：好看的霞光不仅取决于头顶云层，还取决于太阳方向光路上的云层分布
+// 参考：霞光雷达 golden-hour-radar 的 3 段光路采样
+async function fetchSunPathData(lat, lon, azimuth, dateStr, eventType) {
+  // 沿太阳方向采样 3 个距离点
+  const rayDistances = [35, 90, 160]; // km
+  const rayWeights = [0.45, 0.35, 0.20];
+
+  const radAz = azimuth * Math.PI / 180;
+  const R = 6371; // 地球半径 km
+
+  const results = await Promise.allSettled(rayDistances.map(async (dist, i) => {
+    // 计算采样点坐标（大圆公式简化版）
+    const dR = dist / R;
+    const sampleLat = Math.asin(
+      Math.sin(lat * Math.PI / 180) * Math.cos(dR) +
+      Math.cos(lat * Math.PI / 180) * Math.sin(dR) * Math.cos(radAz)
+    ) * 180 / Math.PI;
+    const sampleLon = lon + Math.atan2(
+      Math.sin(radAz) * Math.sin(dR) * Math.cos(lat * Math.PI / 180),
+      Math.cos(dR) - Math.sin(lat * Math.PI / 180) * Math.sin(sampleLat * Math.PI / 180)
+    ) * 180 / Math.PI;
+
+    const params = new URLSearchParams({
+      latitude: sampleLat.toFixed(2),
+      longitude: sampleLon.toFixed(2),
+      hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high',
+      timezone: 'auto',
+      forecast_days: 7,
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(`${FORECAST_URL}?${params}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return { dist: dist, weight: rayWeights[i], data: data, lat: sampleLat, lon: sampleLon };
+  }));
+
+  return results
+    .filter(r => r.status === 'fulfilled' && r.value)
+    .map(r => r.value);
+}
+
+// 从光路采样数据中提取目标时刻的云层数据
+function extractSunPathClouds(sunPathResults, eventType, eventISO) {
+  if (!sunPathResults || sunPathResults.length === 0) return null;
+
+  const eventTime = new Date(eventISO);
+  const eventHour = eventTime.getHours();
+
+  let weightedBlocking = 0;
+  let totalWeight = 0;
+  let weightedHighCloud = 0;
+
+  sunPathResults.forEach(r => {
+    if (!r.data || !r.data.hourly) return;
+    const times = r.data.hourly.time;
+    // 找最接近日出/日落时刻的小时
+    let bestIdx = 0, bestDiff = Infinity;
+    times.forEach((t, i) => {
+      const h = new Date(t).getHours();
+      const diff = Math.abs(h - eventHour);
+      if (diff < bestDiff && t.startsWith(times[0].slice(0, 10))) {
+        bestDiff = diff;
+        bestIdx = i;
+      }
+    });
+
+    const low = r.data.hourly.cloud_cover_low?.[bestIdx] ?? 0;
+    const mid = r.data.hourly.cloud_cover_mid?.[bestIdx] ?? 0;
+    const high = r.data.hourly.cloud_cover_high?.[bestIdx] ?? 0;
+
+    // 光路阻挡公式（借鉴霞光雷达）
+    const blocking = low * 0.78 + mid * 0.45 + high * 0.18;
+
+    weightedBlocking += blocking * r.weight;
+    weightedHighCloud += high * r.weight;
+    totalWeight += r.weight;
+  });
+
+  if (totalWeight === 0) return null;
+
+  return {
+    blocking: Math.round(weightedBlocking / totalWeight),
+    highCloudCanvas: Math.round(weightedHighCloud / totalWeight),
+    points: sunPathResults.length,
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+// 🆕 v33 新增：气压趋势分析
+// ════════════════════════════════════════════════════════════
+// 气压急升常伴随天况转好（反气旋控制），可作辅助指标
+function getPressureTrend(data, di, type) {
+  if (!data.hourly.surface_pressure) return null;
+  const daily = data.daily;
+  const hourly = data.hourly;
+  const dateStr = daily.time[di];
+  if (!dateStr) return null;
+
+  const eventISO = type === 'morning' ? daily.sunrise[di] : daily.sunset[di];
+  if (!eventISO) return null;
+  const eventHour = new Date(eventISO).getHours();
+
+  // 取事件前后 ±3h 的气压数据
+  const indices = hourly.time
+    .map((t, i) => ({ i, h: new Date(t).getHours() }))
+    .filter(x => hourly.time[x.i].startsWith(dateStr))
+    .filter(x => x.h >= eventHour - 3 && x.h <= eventHour + 3);
+
+  if (indices.length < 3) return null;
+
+  const pressures = indices.map(x => hourly.surface_pressure[x.i]).filter(v => v != null);
+  if (pressures.length < 3) return null;
+
+  // 线性回归斜率
+  const n = pressures.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += i; sumY += pressures[i];
+    sumXY += i * pressures[i]; sumX2 += i * i;
+  }
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+
+  // 气压变化率（hPa/h）：正值=升压（天况转好），负值=降压（可能转阴）
+  return {
+    slope: Math.round(slope * 100) / 100,
+    current: pressures[Math.floor(pressures.length / 2)],
+    trend: slope > 0.3 ? 'rising' : slope < -0.3 ? 'falling' : 'stable',
+  };
+}
+
+// 获取太阳光路采样的 Promise 数组
+function getSunPathFetches(data) {
+  if (!data || !data.daily || !state.lat) return [];
+  const todayIdx = 0;
+  const results = [];
+
+  // 朝霞光路
+  if (data.daily.sunrise[todayIdx]) {
+    const srAz = _calcSolarAzimuth(state.lat, data.daily.time[todayIdx], 'sunrise');
+    results.push(fetchSunPathData(state.lat, state.lon, srAz, data.daily.time[todayIdx], 'sunrise'));
+  }
+  // 晚霞光路
+  if (data.daily.sunset[todayIdx]) {
+    const ssAz = _calcSolarAzimuth(state.lat, data.daily.time[todayIdx], 'sunset');
+    results.push(fetchSunPathData(state.lat, state.lon, ssAz, data.daily.time[todayIdx], 'sunset'));
+  }
+  return results;
+}
+
 // === 获取数据 ===
 async function fetchForecast() {
   if (!state.lat || !state.lon) return;
@@ -856,10 +1068,10 @@ async function fetchForecast() {
   const baseParams = {
     latitude: state.lat,
     longitude: state.lon,
-    hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,dew_point_2m,precipitation_probability,visibility,temperature_2m,weather_code',
+    hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,dew_point_2m,precipitation_probability,visibility,temperature_2m,weather_code,surface_pressure',
     daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
     timezone: 'auto',
-    forecast_days: 3,
+    forecast_days: 7,
   };
 
   const results = await Promise.allSettled(models.map(model => {
@@ -884,6 +1096,17 @@ async function fetchForecast() {
 
   // 记录成功模型
   state.modelSources = successData.map(d => d._model || 'unknown');
+
+  // v33: 并行获取 AOD 和太阳光路数据（不阻塞主流程）
+  const [aodResult, ...sunPathResults] = await Promise.allSettled([
+    fetchAODData(state.lat, state.lon),
+    // 为朝霞和晚霞各获取光路数据
+    ...getSunPathFetches(successData[0])
+  ]);
+  state.aodData = aodResult.status === 'fulfilled' ? aodResult.value : null;
+  state.sunPathData = {};
+  if (sunPathResults[0]?.status === 'fulfilled') state.sunPathData.morning = sunPathResults[0].value;
+  if (sunPathResults[1]?.status === 'fulfilled') state.sunPathData.evening = sunPathResults[1].value;
 
   // 如果只有一个模型成功，直接使用
   if (successData.length === 1) {
@@ -1035,9 +1258,27 @@ function handleTabClick(e) {
 }
 
 function updateTabUI() {
-  $tabBar.querySelectorAll('.tab-btn').forEach(b => {
-    b.classList.toggle('active', +b.dataset.tab === state.activeTab);
-  });
+  // Update tab labels from forecast data
+  if (state.forecastData && state.forecastData.daily.time) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dayLabels = ['今天', '明天', '后天'];
+    $tabBar.querySelectorAll('.tab-btn').forEach(b => {
+      const idx = +b.dataset.tab;
+      const dateStr = state.forecastData.daily.time[idx];
+      if (dateStr) {
+        const d = new Date(dateStr + 'T00:00:00');
+        const diff = Math.round((d - today) / 86400000);
+        const weekday = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+        b.textContent = dayLabels[diff] || `${d.getMonth()+1}/${d.getDate()} ${weekday}`;
+      }
+      b.classList.toggle('active', idx === state.activeTab);
+    });
+  } else {
+    $tabBar.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.toggle('active', +b.dataset.tab === state.activeTab);
+    });
+  }
   // 更新日期标签
   if (state.forecastData && state.forecastData.daily.time[state.activeTab]) {
     const dateStr = state.forecastData.daily.time[state.activeTab];
@@ -1054,9 +1295,9 @@ function formatTabDate(dateStr) {
   const weekday = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
   const mm = d.getMonth() + 1, dd = d.getDate();
   const datePart = `${mm}月${dd}日 ${weekday}`;
-  if (diff === 0) return `📍 今天 · ${datePart}`;
-  if (diff === 1) return `📍 明天 · ${datePart}`;
-  return `📍 ${datePart}`;
+  const labels = { 0: '今天', 1: '明天', 2: '后天' };
+  const label = labels[diff] || `第${diff + 1}天`;
+  return `📍 ${label} · ${datePart}`;
 }
 
 // === 渲染选项卡预测 ===
@@ -1102,6 +1343,11 @@ function renderTabPredictions(data) {
   // 趋势分析
   const morningTrend = getTrendData(data, di, 'morning');
   const eveningTrend = getTrendData(data, di, 'evening');
+
+  // v33: 计算气压趋势
+  const morningPressure = getPressureTrend(data, di, 'morning');
+  const eveningPressure = getPressureTrend(data, di, 'evening');
+  state.pressureTrend = { morning: morningPressure, evening: eveningPressure };
 
   const morningProb = calcProbability(morningData, 'morning', morningTrend);
   const morningQuality = calcQuality(morningData, 'morning');
@@ -1445,6 +1691,67 @@ function calcProbability(d, type, trendData) {
     prob += solarCorrection;
   }
 
+  // === 8. v33: 气溶胶光学厚度(AOD)修正 ===
+  // AOD 是霞光色彩最重要的单一特征（Henriksson 2019）
+  // 低 AOD = 空气洁净 = 色彩更鲜艳；高 AOD = 浑浊 = 偏灰
+  if (state.aodData && state.aodData.hourly) {
+    const aodTimes = state.aodData.hourly.time;
+    const daily = state.forecastData?.daily;
+    if (daily) {
+      const eventISO = type === 'morning' ? daily.sunrise[0] : daily.sunset[0];
+      if (eventISO) {
+        const eventHour = new Date(eventISO).getHours();
+        const eventDate = aodTimes[0]?.slice(0, 10);
+        let aodVal = null;
+        aodTimes.forEach((t, i) => {
+          if (t.startsWith(eventDate) && Math.abs(new Date(t).getHours() - eventHour) <= 1) {
+            const v = state.aodData.hourly.aerosol_optical_depth_550nm?.[i];
+            if (v != null) aodVal = v;
+          }
+        });
+        if (aodVal != null) {
+          if (aodVal < 0.05) prob += 8;       // 极致通透
+          else if (aodVal < 0.1) prob += 5;    // 通透
+          else if (aodVal < 0.2) prob += 2;    // 较好
+          else if (aodVal < 0.4) prob -= 3;    // 浑浊
+          else if (aodVal < 0.6) prob -= 8;    // 严重浑浊
+          else prob -= 12;                     // 极度浑浊
+        }
+      }
+    }
+  }
+
+  // === 9. v33: 太阳光路采样修正 ===
+  // 沿太阳方向远处云层的阻挡情况影响霞光是否能到达观测点
+  if (state.sunPathData) {
+    const spData = type === 'morning' ? state.sunPathData.morning : state.sunPathData.evening;
+    if (spData) {
+      const sp = extractSunPathClouds(spData, type,
+        type === 'morning' ? state.forecastData?.daily?.sunrise[0] : state.forecastData?.daily?.sunset[0]);
+      if (sp) {
+        // 光路阻挡低 = 光线畅通 = 加分
+        if (sp.blocking < 15) prob += 8;
+        else if (sp.blocking < 30) prob += 4;
+        else if (sp.blocking < 50) prob += 0;
+        else if (sp.blocking < 70) prob -= 5;
+        else prob -= 10;
+        // 远处高云画布好 = 有被染色的云 = 加分
+        if (sp.highCloudCanvas >= 20 && sp.highCloudCanvas <= 65) prob += 5;
+        else if (sp.highCloudCanvas < 8) prob -= 4;
+      }
+    }
+  }
+
+  // === 10. v33: 气压趋势修正 ===
+  // 气压上升常伴随天况转好（反气旋控制）
+  const pTrend = state.pressureTrend?.[type];
+  if (pTrend) {
+    if (pTrend.trend === 'rising' && pTrend.slope > 0.5) prob += 4;
+    else if (pTrend.trend === 'rising') prob += 2;
+    else if (pTrend.trend === 'falling' && pTrend.slope < -0.5) prob -= 3;
+    else if (pTrend.trend === 'falling') prob -= 1;
+  }
+
   return Math.max(0, Math.min(100, Math.round(prob)));
 }
 
@@ -1517,6 +1824,61 @@ function calcQuality(d, type) {
     const month = new Date().getMonth() + 1;
     const solarCorrection = _calcSolarElevationCorrection(state.lat, month, type);
     quality += solarCorrection * 0.5;
+  }
+
+  // === 6. v33: AOD 通透度对色彩饱和度的影响 ===
+  if (state.aodData && state.aodData.hourly) {
+    const aodTimes = state.aodData.hourly.time;
+    const daily = state.forecastData?.daily;
+    if (daily) {
+      const eventISO = type === 'morning' ? daily.sunrise[0] : daily.sunset[0];
+      if (eventISO) {
+        const eventHour = new Date(eventISO).getHours();
+        const eventDate = aodTimes[0]?.slice(0, 10);
+        let aodVal = null;
+        aodTimes.forEach((t, i) => {
+          if (t.startsWith(eventDate) && Math.abs(new Date(t).getHours() - eventHour) <= 1) {
+            const v = state.aodData.hourly.aerosol_optical_depth_550nm?.[i];
+            if (v != null) aodVal = v;
+          }
+        });
+        if (aodVal != null) {
+          if (aodVal < 0.05) quality += 10;      // 极致通透，色彩饱和度最佳
+          else if (aodVal < 0.1) quality += 6;
+          else if (aodVal < 0.2) quality += 2;
+          else if (aodVal < 0.4) quality -= 5;
+          else quality -= 12;                      // 严重浑浊，色彩发灰
+        }
+      }
+    }
+  }
+
+  // === 7. v33: 太阳光路对霞光质量的影响 ===
+  if (state.sunPathData) {
+    const spData = type === 'morning' ? state.sunPathData.morning : state.sunPathData.evening;
+    if (spData) {
+      const sp = extractSunPathClouds(spData, type,
+        type === 'morning' ? state.forecastData?.daily?.sunrise[0] : state.forecastData?.daily?.sunset[0]);
+      if (sp) {
+        // 光路畅通 + 有高云画布 = 最佳质量
+        if (sp.blocking < 20 && sp.highCloudCanvas >= 20 && sp.highCloudCanvas <= 60) {
+          quality += 8;
+        } else if (sp.blocking < 35) {
+          quality += 3;
+        } else if (sp.blocking > 60) {
+          quality -= 6;
+        }
+      }
+    }
+  }
+
+  // === 8. v33: 气压趋势修正 ===
+  const pTrend = state.pressureTrend?.[type];
+  if (pTrend) {
+    if (pTrend.trend === 'rising' && pTrend.slope > 0.5) quality += 3;
+    else if (pTrend.trend === 'rising') quality += 1;
+    else if (pTrend.trend === 'falling' && pTrend.slope < -0.5) quality -= 3;
+    else if (pTrend.trend === 'falling') quality -= 1;
   }
 
   return Math.max(0, Math.min(100, Math.round(quality)));
@@ -1873,6 +2235,55 @@ function buildTips(d, type) {
     tips.push('🥶 清晨气温低，注意<strong>保暖和电池续航</strong>。');
   }
 
+  // v33: AOD 通透度增强提示（使用真实 AOD 数据优先）
+  if (state.aodData?.hourly) {
+    const aodTimes = state.aodData.hourly.time;
+    const daily = state.forecastData?.daily;
+    if (daily) {
+      const eventISO = type === 'morning' ? daily.sunrise[0] : daily.sunset[0];
+      if (eventISO) {
+        const eventHour = new Date(eventISO).getHours();
+        const eventDate = aodTimes[0]?.slice(0, 10);
+        aodTimes.forEach((t, i) => {
+          if (t.startsWith(eventDate) && Math.abs(new Date(t).getHours() - eventHour) <= 1) {
+            const v = state.aodData.hourly.aerosol_optical_depth_550nm?.[i];
+            if (v != null) {
+              if (v < 0.05) tips.unshift('🌍 <strong>真实AOD ' + v.toFixed(2) + '</strong>——空气极致通透，色彩饱和度将达到巅峰！');
+              else if (v < 0.1) tips.unshift('🌍 <strong>真实AOD ' + v.toFixed(2) + '</strong>——空气非常洁净，霞光色彩将很鲜艳。');
+              else if (v > 0.35) tips.push('🌫️ <strong>真实AOD ' + v.toFixed(2) + '</strong>——大气浑浊，霞光色彩可能偏灰暗。');
+            }
+          }
+        });
+      }
+    }
+  }
+
+  // v33: 太阳光路提示
+  if (state.sunPathData) {
+    const spData = type === 'morning' ? state.sunPathData.morning : state.sunPathData.evening;
+    if (spData) {
+      const eventISO = type === 'morning' ? state.forecastData?.daily?.sunrise[0] : state.forecastData?.daily?.sunset[0];
+      const sp = spData ? extractSunPathClouds(spData, type, eventISO) : null;
+      if (sp) {
+        if (sp.blocking < 15 && sp.highCloudCanvas >= 20) {
+          tips.unshift('🔭 <strong>光路通透</strong>——太阳方向低云少、高云充足，光线将直达观测点！');
+        } else if (sp.blocking > 55) {
+          tips.push('🚧 <strong>光路受阻</strong>——太阳方向云层较厚，霞光可能被遮挡，建议换方向或找制高点。');
+        }
+      }
+    }
+  }
+
+  // v33: 气压趋势提示
+  const pTrend = state.pressureTrend?.[type];
+  if (pTrend) {
+    if (pTrend.trend === 'rising' && pTrend.slope > 0.5) {
+      tips.push('📈 <strong>气压上升中</strong>（' + pTrend.slope.toFixed(1) + ' hPa/h），天况可能持续转好。');
+    } else if (pTrend.trend === 'falling' && pTrend.slope < -0.5) {
+      tips.push('📉 <strong>气压下降中</strong>（' + pTrend.slope.toFixed(1) + ' hPa/h），注意天气可能变化。');
+    }
+  }
+
   return tips.join('<br>');
 }
 
@@ -1936,6 +2347,28 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
   const probColor = probColorFn(prob);
   const qualColor = probColorFn(quality);
 
+  // v33: 获取 AOD 值
+  let aodVal = null;
+  if (state.aodData?.hourly) {
+    const aodTimes = state.aodData.hourly.time;
+    const eventHour = new Date(timeISO).getHours();
+    const eventDate = aodTimes[0]?.slice(0, 10);
+    aodTimes.forEach((t, i) => {
+      if (t.startsWith(eventDate) && Math.abs(new Date(t).getHours() - eventHour) <= 1) {
+        const v = state.aodData.hourly.aerosol_optical_depth_550nm?.[i];
+        if (v != null) aodVal = v;
+      }
+    });
+  }
+  // v33: 获取光路数据
+  let sunPathInfo = null;
+  if (state.sunPathData) {
+    const spData = type === 'morning' ? state.sunPathData.morning : state.sunPathData.evening;
+    if (spData) sunPathInfo = extractSunPathClouds(spData, type, timeISO);
+  }
+  // v33: 获取气压趋势
+  const pTrend = state.pressureTrend?.[type];
+
   const factors = [
     { name: '中高层云', val: Math.max(data.cloudMid, data.cloudHigh) + '%',
       cls: Math.max(data.cloudMid, data.cloudHigh) >= 15 && Math.max(data.cloudMid, data.cloudHigh) <= 65 ? 'good' : Math.max(data.cloudMid, data.cloudHigh) > 80 ? 'bad' : 'warn' },
@@ -1949,6 +2382,12 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
       cls: data.precipProb > 30 ? 'bad' : data.precipProb > 10 ? 'warn' : 'good' },
     { name: '能见度', val: (data.visibility / 1000).toFixed(1) + 'km',
       cls: data.visibility < 3000 ? 'bad' : data.visibility < 6000 ? 'warn' : 'good' },
+    { name: '气溶胶AOD', val: aodVal != null ? aodVal.toFixed(2) : '--',
+      cls: aodVal == null ? 'warn' : aodVal < 0.1 ? 'good' : aodVal > 0.3 ? 'bad' : 'warn' },
+    { name: '光路通透', val: sunPathInfo ? (100 - sunPathInfo.blocking) + '%' : '--',
+      cls: !sunPathInfo ? 'warn' : sunPathInfo.blocking < 25 ? 'good' : sunPathInfo.blocking > 55 ? 'bad' : 'warn' },
+    { name: '气压趋势', val: pTrend ? (pTrend.trend === 'rising' ? '↑' : pTrend.trend === 'falling' ? '↓' : '→') : '--',
+      cls: !pTrend ? 'warn' : pTrend.trend === 'rising' ? 'good' : pTrend.trend === 'falling' ? 'bad' : 'good' },
   ];
 
   const eventLabel = type === 'morning' ? '日出' : '日落';
@@ -1998,7 +2437,7 @@ function buildPredictionCard(label, type, score, prob, quality, data, tips, time
         <button class="nearby-btn" onclick="openNearbySearch('${type}')">📷 附近摄影点</button>
         <button class="share-btn" onclick="sharePrediction(${score}, '${type}', '${timeRange}', '${verdictText}')">📤 分享预测</button>
       </div>
-      <div class="data-source">🌐 多模型集成 (${getSourceLabel()})</div>
+      <div class="data-source">🌐 ${getSourceLabel()}${state.aodData ? " · AOD实时" : ""}${state.sunPathData ? " · 光路采样" : ""}</div>
     </div>
   </div>`;
 }
@@ -2064,7 +2503,7 @@ function startCountdown(data) {
     // 倒计时：距离最近的日出或日落事件
     // 找所有日出日落时间，找到下一个
     const events = [];
-    for (let d = 0; d < 3; d++) {
+    for (let d = 0; d < 7; d++) {
       if (daily.sunrise[d]) events.push({ time: new Date(daily.sunrise[d]), type: '🌄 日出', dayIdx: d });
       if (daily.sunset[d]) events.push({ time: new Date(daily.sunset[d]), type: '🌇 日落', dayIdx: d });
     }
@@ -2127,15 +2566,19 @@ function renderDemo() {
   const daily = { time: [], sunrise: [], sunset: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_probability_max: [] };
   const hourly = { time: [], cloud_cover: [], cloud_cover_low: [], cloud_cover_mid: [],
     cloud_cover_high: [], relative_humidity_2m: [], dew_point_2m: [], precipitation_probability: [],
-    visibility: [], temperature_2m: [], weather_code: [] };
+    visibility: [], temperature_2m: [], weather_code: [], surface_pressure: [] };
 
   const scenarios = [
     { cc: 55, cl: 8,  cm: 40, ch: 45, hum: 52, pp: 3,  vis: 9000,  tmp: 23, wc: 2,  tmax: 27, tmin: 18, ppmax: 8 },
     { cc: 35, cl: 5,  cm: 20, ch: 25, hum: 42, pp: 0,  vis: 12000, tmp: 25, wc: 1,  tmax: 29, tmin: 19, ppmax: 0 },
     { cc: 78, cl: 50, cm: 65, ch: 55, hum: 78, pp: 40, vis: 3500,  tmp: 20, wc: 61, tmax: 24, tmin: 16, ppmax: 55 },
+    { cc: 25, cl: 3,  cm: 15, ch: 30, hum: 38, pp: 0,  vis: 18000, tmp: 26, wc: 1,  tmax: 30, tmin: 20, ppmax: 0 },
+    { cc: 90, cl: 70, cm: 80, ch: 60, hum: 85, pp: 60, vis: 2500,  tmp: 18, wc: 63, tmax: 22, tmin: 15, ppmax: 70 },
+    { cc: 45, cl: 10, cm: 35, ch: 50, hum: 48, pp: 5,  vis: 14000, tmp: 24, wc: 2,  tmax: 28, tmin: 19, ppmax: 10 },
+    { cc: 65, cl: 15, cm: 50, ch: 55, hum: 55, pp: 10, vis: 10000, tmp: 22, wc: 3,  tmax: 26, tmin: 17, ppmax: 15 },
   ];
 
-  for (let d = 0; d < 3; d++) {
+  for (let d = 0; d < 7; d++) {
     const date = new Date(now);
     date.setDate(date.getDate() + d);
     const dateStr = date.toISOString().slice(0, 10);
@@ -2166,6 +2609,7 @@ function renderDemo() {
       hourly.visibility.push(Math.round(sc.vis + jitter * 180));
       hourly.temperature_2m.push(Math.round(sc.tmp + Math.sin(h / 6) * 4));
       hourly.weather_code.push(sc.wc);
+      hourly.surface_pressure.push(Math.round(1013 + jitter * 2 + (d - 3) * 0.5));
       // dew_point: approximate from temp and humidity (Magnus formula)
       const a = 17.27, b = 237.7;
       const rh = Math.max(1, sc.hum - jitter * 0.2) / 100;

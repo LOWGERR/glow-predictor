@@ -9,7 +9,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>朝霞晚霞预测 · 摄影助手</title>
-<link rel="stylesheet" href="style.css?t=32">
+<link rel="stylesheet" href="style.css?t=33">
 </head>
 <body>
 <div class="app">
@@ -17,7 +17,7 @@
   <header class="header">
     <div class="header-top">
       <h1> 朝霞晚霞</h1>
-      <span class="header-badge">摄影助手 v32</span>
+      <span class="header-badge">摄影助手 v33 · 7天预测+AOD+光路</span>
     </div>
     <div class="location-row" id="locationRow">
       <span class="loc-icon">📍</span>
@@ -122,11 +122,13 @@
     <div class="countdown-bar" id="countdownBar"></div>
   </div>
 
-  <!-- 选项卡 -->
+  <!-- 选项卡（7天横向滚动） -->
   <div class="tab-bar" id="tabBar">
-    <button class="tab-btn active" data-tab="0">今天</button>
-    <button class="tab-btn" data-tab="1">明天</button>
-    <button class="tab-btn" data-tab="2">后天</button>
+    <div class="tab-scroll" id="tabScroll">
+      <button class="tab-btn active" data-tab="0">今天</button>
+      <button class="tab-btn" data-tab="1">明天</button>
+      <button class="tab-btn" data-tab="2">后天</button>
+    </div>
   </div>
   <div class="tab-date" id="tabDate"></div>
 
@@ -145,7 +147,7 @@
       <div class="legend-item"><span class="dot" style="background:#ff4444"></span> &lt;15 无烧</div>
     </div>
     <div class="legend-trend" style="font-size:0.7rem;color:var(--text-dim);margin-top:6px">
-      📈 趋势图虚线 = 日出/日落时刻 · 总云量+中云+高云变化
+      📈 趋势图虚线 = 日出/日落时刻 · 总云量+中云+高云变化 · 支持7天预测 · 含AOD+光路采样
     </div>
   </div>
 
@@ -198,6 +200,6 @@
   </div>
 </div>
 
-<script src="glow.js?v=32"></script>
+<script src="glow.js?v=33"></script>
 </body>
 </html>
