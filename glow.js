@@ -1071,7 +1071,7 @@ async function fetchForecast() {
   const baseParams = {
     latitude: state.lat,
     longitude: state.lon,
-    hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,dew_point_2m,precipitation_probability,visibility,temperature_2m,weather_code,surface_pressure',
+    hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,dew_point_2m,precipitation_probability,visibility,temperature_2m,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m',
     daily: 'sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
     timezone: 'auto',
     forecast_days: 3,
@@ -1378,10 +1378,11 @@ function extractHourlyData(data, idx) {
     precipProb: data.hourly.precipitation_probability[idx],
     visibility: data.hourly.visibility[idx],
     temp: data.hourly.temperature_2m[idx],
+    pressure: data.hourly.surface_pressure ? data.hourly.surface_pressure[idx] : null,
+    windSpeed: data.hourly.wind_speed_10m ? data.hourly.wind_speed_10m[idx] : null,
+    windDir: data.hourly.wind_direction_10m ? data.hourly.wind_direction_10m[idx] : null,
   };
 }
-
-// === AOD 通透度代理（基于能见度+湿度+低云的联合推断） ===
 // 返回 0-1 的等效气溶胶光学厚度指数：0=极致通透，1=严重雾霾/沙尘
 function _calcAODProxy(visibility, humidity, cloudLow) {
   // 能见度是 AOD 的最直接代理（单位：米）
@@ -1946,7 +1947,23 @@ function calcProbability(d, type, trendData) {
     else if (pTrend.trend === 'falling') prob -= 1;
   }
 
-  // 9. 季节修正
+  // 9. 气压绝对值（高气压=天况好）
+  if (d.pressure != null) {
+    if (d.pressure > 1020) prob += 3;
+    else if (d.pressure > 1013) prob += 1;
+    else if (d.pressure < 1005) prob -= 3;
+    else if (d.pressure < 1000) prob -= 5;
+  }
+
+  // 10. 风速（微风最佳，大风云消散快）
+  if (d.windSpeed != null) {
+    if (d.windSpeed >= 3 && d.windSpeed <= 15) prob += 3;   // 微风：云缓慢移动，持续时间长
+    else if (d.windSpeed > 15 && d.windSpeed <= 25) prob += 0; // 轻风：中性
+    else if (d.windSpeed > 25 && d.windSpeed <= 40) prob -= 3; // 中风：云变化快
+    else if (d.windSpeed > 40) prob -= 8;                      // 大风：云快速消散
+  }
+
+  // 11. 季节修正
   if (state.lat != null) {
     const month = new Date().getMonth() + 1;
     prob += _calcSolarElevationCorrection(state.lat, month, type);
@@ -2022,6 +2039,21 @@ function calcQuality(d, type) {
   if (state.lat != null) {
     const month = new Date().getMonth() + 1;
     quality += _calcSolarElevationCorrection(state.lat, month, type) * 0.3;
+  }
+
+  // 7. 风速（微风=大气稳定=散射均匀=色彩好）
+  if (d.windSpeed != null) {
+    if (d.windSpeed >= 3 && d.windSpeed <= 12) quality += 4;
+    else if (d.windSpeed > 12 && d.windSpeed <= 25) quality += 0;
+    else if (d.windSpeed > 25 && d.windSpeed <= 40) quality -= 4;
+    else if (d.windSpeed > 40) quality -= 8;
+  }
+
+  // 8. 气压绝对值（高气压=空气洁净=通透度高）
+  if (d.pressure != null) {
+    if (d.pressure > 1020) quality += 3;
+    else if (d.pressure > 1013) quality += 1;
+    else if (d.pressure < 1005) quality -= 3;
   }
 
   return Math.max(0, Math.min(100, Math.round(quality)));
@@ -2163,6 +2195,19 @@ function buildTips(d, type) {
     tips.push('🥶 清晨气温低，注意<strong>保暖和电池续航</strong>。');
   }
 
+  // v41: 风速提示
+  if (d.windSpeed != null) {
+    if (d.windSpeed >= 3 && d.windSpeed <= 12) tips.push('🍃 微风 ' + Math.round(d.windSpeed) + 'km/h，大气稳定，散射均匀，<strong>色彩表现最佳</strong>。');
+    else if (d.windSpeed > 35) tips.push('💨 风速 ' + Math.round(d.windSpeed) + 'km/h，云层变化快，<strong>霞光可能转瞬即逝</strong>，抓紧拍摄。');
+    else if (d.windSpeed > 25) tips.push('🌬️ 风速 ' + Math.round(d.windSpeed) + 'km/h，云移动较快，注意<strong>提前构图等待</strong>。');
+  }
+
+  // v41: 气压提示
+  if (d.pressure != null) {
+    if (d.pressure > 1020) tips.push('📊 气压 ' + Math.round(d.pressure) + 'hPa（高压控制），<strong>天况稳定，通透度高</strong>。');
+    else if (d.pressure < 1005) tips.push('📊 气压 ' + Math.round(d.pressure) + 'hPa（低压），天气可能不稳定，<strong>注意变化</strong>。');
+  }
+
   // v5: AOD 通透度提示（使用统一 _getAOD 函数）
   const aodTip = _getAOD(type, d);
   if (aodTip) {
@@ -2270,6 +2315,10 @@ function buildPredictionCard(label, type, score, prob, quality, confidence, data
       cls: !spInfo ? 'warn' : spInfo.blocking < 25 ? 'good' : spInfo.blocking > 55 ? 'bad' : 'warn' },
     { name: '气压趋势', val: pTrend ? (pTrend.trend === 'rising' ? '↑' : pTrend.trend === 'falling' ? '↓' : '→') : '--',
       cls: !pTrend ? 'warn' : pTrend.trend === 'rising' ? 'good' : pTrend.trend === 'falling' ? 'bad' : 'good' },
+    { name: '风速', val: data.windSpeed != null ? Math.round(data.windSpeed) + 'km/h' : '--',
+      cls: data.windSpeed == null ? 'warn' : data.windSpeed <= 15 ? 'good' : data.windSpeed > 35 ? 'bad' : 'warn' },
+    { name: '气压', val: data.pressure != null ? Math.round(data.pressure) + 'hPa' : '--',
+      cls: data.pressure == null ? 'warn' : data.pressure > 1013 ? 'good' : data.pressure < 1005 ? 'bad' : 'good' },
   ];
 
   const eventLabel = type === 'morning' ? '日出' : '日落';
@@ -2451,12 +2500,12 @@ function renderDemo() {
   const daily = { time: [], sunrise: [], sunset: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_probability_max: [] };
   const hourly = { time: [], cloud_cover: [], cloud_cover_low: [], cloud_cover_mid: [],
     cloud_cover_high: [], relative_humidity_2m: [], dew_point_2m: [], precipitation_probability: [],
-    visibility: [], temperature_2m: [], weather_code: [], surface_pressure: [] };
+    visibility: [], temperature_2m: [], weather_code: [], surface_pressure: [], wind_speed_10m: [], wind_direction_10m: [] };
 
   const scenarios = [
-    { cc: 55, cl: 8,  cm: 40, ch: 45, hum: 52, pp: 3,  vis: 9000,  tmp: 23, wc: 2,  tmax: 27, tmin: 18, ppmax: 8 },
-    { cc: 35, cl: 5,  cm: 20, ch: 25, hum: 42, pp: 0,  vis: 12000, tmp: 25, wc: 1,  tmax: 29, tmin: 19, ppmax: 0 },
-    { cc: 78, cl: 50, cm: 65, ch: 55, hum: 78, pp: 40, vis: 3500,  tmp: 20, wc: 61, tmax: 24, tmin: 16, ppmax: 55 },
+    { cc: 55, cl: 8,  cm: 40, ch: 45, hum: 52, pp: 3,  vis: 9000,  tmp: 23, wc: 2,  tmax: 27, tmin: 18, ppmax: 8, wind: 8, pres: 1018 },
+    { cc: 35, cl: 5,  cm: 20, ch: 25, hum: 42, pp: 0,  vis: 12000, tmp: 25, wc: 1,  tmax: 29, tmin: 19, ppmax: 0, wind: 12, pres: 1022 },
+    { cc: 78, cl: 50, cm: 65, ch: 55, hum: 78, pp: 40, vis: 3500,  tmp: 20, wc: 61, tmax: 24, tmin: 16, ppmax: 55, wind: 28, pres: 1002 },
   ];
 
   for (let d = 0; d < 3; d++) {
@@ -2488,7 +2537,9 @@ function renderDemo() {
       hourly.visibility.push(Math.round(sc.vis + jitter * 180));
       hourly.temperature_2m.push(Math.round(sc.tmp + Math.sin(h / 6) * 4));
       hourly.weather_code.push(sc.wc);
-      hourly.surface_pressure.push(Math.round(1013 + jitter * 2 + (d - 3) * 0.5));
+      hourly.surface_pressure.push(Math.round((sc.pres || 1013) + jitter * 2));
+      hourly.wind_speed_10m.push(Math.round((sc.wind || 10) + jitter * 0.5));
+      hourly.wind_direction_10m.push(Math.round(180 + jitter * 10));
       // dew_point: approximate from temp and humidity (Magnus formula)
       const a = 17.27, b = 237.7;
       const rh = Math.max(1, sc.hum - jitter * 0.2) / 100;
