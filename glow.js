@@ -2547,6 +2547,8 @@ function openCloudMap() {
   }
   const modal = document.getElementById('cloudMapModal');
   modal.style.display = 'flex';
+  document.getElementById('cloudMapTitle').textContent =
+    _cloudMapType === 'evening' ? '🌅 晚霞预测地图' : '🌄 朝霞预测地图';
   document.body.classList.add('no-scroll');
 
   // 等待 DOM 渲染完成后再初始化地图（关键！）
@@ -2585,6 +2587,8 @@ function toggleCloudMapType() {
   _cloudMapType = _cloudMapType === 'evening' ? 'morning' : 'evening';
   document.getElementById('cloudMapToggle').textContent =
     _cloudMapType === 'evening' ? '🌅 晚霞' : '🌄 朝霞';
+  document.getElementById('cloudMapTitle').textContent =
+    _cloudMapType === 'evening' ? '🌅 晚霞预测地图' : '🌄 朝霞预测地图';
   loadCloudMapData();
 }
 
@@ -2691,11 +2695,11 @@ async function loadCloudMapData() {
     const pLat = startLat + r * spacing;
     const pLon = startLon + c * spacing;
 
-    // 计算该点评分：使用完整 calcScore 引擎
-    // AOD/光路/气压是区域性大气条件，200km 范围内基本一致，共享中心点数据
-    // 每个 grid point 用自己的云量/湿度/能见度/降水数据
+    // 综合评分：概率 × 质量（与主页完全一致的 calcScore 引擎）
     const result2 = calcScore(d, _cloudMapType, null);
     const score = result2.score;
+    const prob = result2.prob;
+    const quality = result2.quality;
     const color = scoreColor(score);
 
     // 创建圆形标记
@@ -2717,16 +2721,16 @@ async function loadCloudMapData() {
     });
     const labelMarker = L.marker([pLat, pLon], { icon: labelIcon, interactive: false }).addTo(_cloudMap);
 
-    // 点击显示详情
+    // 点击显示综合预测详情（概率+质量+评分）
     circle.on('click', () => {
       const dist = Math.round(distance(lat, lon, pLat, pLon));
       const dir = bearing(lat, lon, pLat, pLon);
       const dirStr = ['北','东北','东','东南','南','西南','西','西北'][Math.round(dir / 45) % 8];
+      const typeLabel = _cloudMapType === 'morning' ? '朝霞' : '晚霞';
       infoEl.innerHTML =
-        `<span class="info-score" style="color:${color}">${score}</span> ${scoreLabel(score)} ` +
-        `<span style="color:var(--text-dim)">· ${dirStr} ${dist >= 1000 ? (dist/1000).toFixed(1) + 'km' : dist + 'm'}</span>` +
-        ` · 云量 ${d.cloudCover}% · 低云 ${d.cloudLow}% · 高云 ${d.cloudHigh}%` +
-        ` · 能见度 ${(d.visibility/1000).toFixed(1)}km`;
+        `${typeLabel} <span class="info-score" style="color:${color}">${score}</span> ${scoreLabel(score)}` +
+        ` · 概率 ${prob} · 质量 ${quality}` +
+        ` <span style="color:var(--text-dim)">· ${dirStr} ${dist >= 1000 ? (dist/1000).toFixed(1) + 'km' : dist + 'm'}</span>`;
     });
 
     _cloudMapMarkers.push(circle);
@@ -2737,12 +2741,15 @@ async function loadCloudMapData() {
   const centerResult = state.forecastData ? calcScore(
     extractHourlyData(state.forecastData, findHourlyIndex(state.forecastData, di, _cloudMapType)),
     _cloudMapType, getTrendData(state.forecastData, di, _cloudMapType)) : null;
-  let centerScore = centerResult?.score ?? '--';
-  let centerColor = centerResult ? scoreColor(centerResult.score) : '#888';
-  let centerLabel = centerResult ? scoreLabel(centerResult.score) : '';
+  const cs = centerResult?.score ?? '--';
+  const cp = centerResult?.prob ?? '--';
+  const cq = centerResult?.quality ?? '--';
+  const cc = centerResult ? scoreColor(centerResult.score) : '#888';
+  const cl = centerResult ? scoreLabel(centerResult.score) : '';
+  const typeLabel = _cloudMapType === 'morning' ? '朝霞' : '晚霞';
 
   infoEl.innerHTML = successCount > 0
-    ? `✅ ${successCount} 个采样点 · 中心评分 <span class="info-score" style="color:${centerColor}">${centerScore}</span> ${centerLabel} · ${_cloudMapType === 'morning' ? '🌄 朝霞' : '🌅 晚霞'}`
+    ? `✅ ${successCount} 个采样点 · ${typeLabel}综合 <span class="info-score" style="color:${cc}">${cs}</span> ${cl} · 概率 ${cp} · 质量 ${cq}`
     : '❌ 采样失败，请重试';
 
   _cloudMapLoading = false;
