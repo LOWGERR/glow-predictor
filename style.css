@@ -1173,14 +1173,8 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
 }
 
 /* Leaflet map fixes */
-.cloud-map-container .leaflet-tile-pane {
-  opacity: 1;
-}
-.cloud-map-container .leaflet-control-zoom a {
-  background: var(--card-bg) !important;
-  color: var(--text) !important;
-  border-color: var(--border) !important;
-}
+
+
 
 /* Footer */
 .footer {
