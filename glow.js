@@ -2558,10 +2558,11 @@ function openCloudMap() {
           zoom: 9,
           zoomControl: true,
         });
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap',
-          maxZoom: 18,
-        }).addTo(_cloudMap);
+        L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+        subdomains: '1234',
+        attribution: '© 高德地图',
+        maxZoom: 18,
+      }).addTo(_cloudMap);
       } else {
         _cloudMap.invalidateSize();
         _cloudMap.setView([state.lat, state.lon], 9);
@@ -2690,10 +2691,12 @@ async function loadCloudMapData() {
     const pLat = startLat + r * spacing;
     const pLon = startLon + c * spacing;
 
-    // 计算该点评分
-    const trendData = null; // 网格点不做趋势分析（太慢）
-    const result2 = calcScore(d, _cloudMapType, trendData);
+    // 计算该点评分（临时清除全局 AOD/光路数据，避免 grid point 用中心点的数据）
+    const savedAod = state.aodData, savedSp = state.sunPathData, savedPt = state.pressureTrend;
+    state.aodData = null; state.sunPathData = null; state.pressureTrend = null;
+    const result2 = calcScore(d, _cloudMapType, null);
     const score = result2.score;
+    state.aodData = savedAod; state.sunPathData = savedSp; state.pressureTrend = savedPt;
     const color = scoreColor(score);
 
     // 创建圆形标记
@@ -2731,19 +2734,13 @@ async function loadCloudMapData() {
     _cloudMapMarkers.push(labelMarker);
   });
 
-  // 中心点分数：用与主页面相同的 trendData 计算
-  let centerScore = '--';
-  let centerColor = '#888';
-  let centerLabel = '';
-  if (state.forecastData) {
-    const trend = getTrendData(state.forecastData, di, _cloudMapType);
-    const centerData = extractHourlyData(state.forecastData,
-      findHourlyIndex(state.forecastData, di, _cloudMapType));
-    const centerResult = calcScore(centerData, _cloudMapType, trend);
-    centerScore = centerResult.score;
-    centerColor = scoreColor(centerResult.score);
-    centerLabel = scoreLabel(centerResult.score);
-  }
+  // 中心点分数：与主页使用完全相同的 calcScore 调用
+  const centerResult = state.forecastData ? calcScore(
+    extractHourlyData(state.forecastData, findHourlyIndex(state.forecastData, di, _cloudMapType)),
+    _cloudMapType, getTrendData(state.forecastData, di, _cloudMapType)) : null;
+  let centerScore = centerResult?.score ?? '--';
+  let centerColor = centerResult ? scoreColor(centerResult.score) : '#888';
+  let centerLabel = centerResult ? scoreLabel(centerResult.score) : '';
 
   infoEl.innerHTML = successCount > 0
     ? `✅ ${successCount} 个采样点 · 中心评分 <span class="info-score" style="color:${centerColor}">${centerScore}</span> ${centerLabel} · ${_cloudMapType === 'morning' ? '🌄 朝霞' : '🌅 晚霞'}`

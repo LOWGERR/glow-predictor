@@ -1120,8 +1120,9 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
 }
 .cloud-map-container {
   flex: 1;
-  min-height: 300px;
+  min-height: 0;
   width: 100%;
+  height: 100%;
 }
 .cloud-map-legend {
   display: flex;
