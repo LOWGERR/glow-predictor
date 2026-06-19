@@ -2206,22 +2206,12 @@ function getSourceLabel() {
 
 function buildPredictionCard(label, type, score, prob, quality, confidence, data, tips, timeISO, dateLabel, chartSvg) {
   const typeCls = type === 'morning' ? 'morning' : 'evening';
-  const timeStr = new Date(timeISO).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   // 时间区间：日出/日落 ±30 分钟
   const t = new Date(timeISO);
   const startTime = new Date(t.getTime() - 30 * 60000);
   const endTime = new Date(t.getTime() + 30 * 60000);
   const fmt = (d) => d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   const timeRange = `${fmt(startTime)} - ${fmt(endTime)}`;
-
-  function scoreColor(s) {
-    if (s >= 85) return '#ff1744';   // 大烧
-    if (s >= 70) return '#e040fb';   // 优质
-    if (s >= 55) return '#4caf50';   // 好
-    if (s >= 35) return '#ffeb3b';   // 一般
-    if (s >= 15) return '#ff9800';   // 偏差
-    return '#ff4444';                // 差
-  }
 
   const scoreColorMain = scoreColor(score);
 
@@ -2547,6 +2537,7 @@ function openCloudMap(type) {
   modal.style.display = 'flex';
   document.getElementById('cloudMapTitle').textContent =
     _cloudMapType === 'evening' ? '🌅 晚霞预测地图' : '🌄 朝霞预测地图';
+  document.getElementById('cloudMapInfo').innerHTML = '⏳ 正在加载地图…';
   document.body.classList.add('no-scroll');
 
   // 等待 DOM 渲染完成后再初始化地图（关键！）
@@ -2615,7 +2606,7 @@ async function loadCloudMapData() {
   _cloudMapLoading = true;
 
   const infoEl = document.getElementById('cloudMapInfo');
-  infoEl.innerHTML = '⏳ 正在采样周围云层数据…';
+  infoEl.innerHTML = '⏳ 正在采样周围' + (gridSize * gridSize) + '个点的预测数据…';
 
   // 清除旧标记
   _cloudMapMarkers.forEach(m => _cloudMap.removeLayer(m));
