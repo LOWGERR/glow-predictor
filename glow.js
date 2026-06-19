@@ -5,7 +5,6 @@ const MARKER_SVG = 'data:image/svg+xml;base64,' + btoa(
 );
 // 火星坐标系偏移量算法
 
-
 // === 常用位置收藏 ===
 const FAV_KEY = 'glow_favorites';
 const MAX_FAVS = 10;
@@ -56,7 +55,6 @@ function initFavorites() {
   if (fm) fm.addEventListener('click', function(e) { if (e.target === fm) fm.style.display = 'none'; });
   updateFavButton();
 }
-
 
 // === 暗色/亮色模式切换 ===
 function toggleTheme() {
@@ -211,7 +209,6 @@ function bindDOM() {
   if ($cmClose) $cmClose.addEventListener('click', closeCloudMap);
   const $cmToggle = document.getElementById('cloudMapToggle');
   if ($cmToggle) $cmToggle.addEventListener('click', toggleCloudMapType);
-
 
 }
 

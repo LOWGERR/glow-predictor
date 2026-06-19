@@ -234,8 +234,6 @@ function buildTips(d, type) {
     }
   }
 
-
-
   // v41: 风速提示
   if (d.windSpeed != null) {
     if (d.windSpeed >= 3 && d.windSpeed <= 12) tips.push('🍃 微风 ' + Math.round(d.windSpeed) + 'km/h，大气稳定，散射均匀，<strong>色彩表现最佳</strong>。');
@@ -461,7 +459,6 @@ function renderDemo() {
   const data = { daily, hourly, timezone: 'Asia/Shanghai' };
   state.forecastData = data;
   renderAll(data);
-
 
   const banner = document.createElement('div');
   banner.className = 'demo-banner';

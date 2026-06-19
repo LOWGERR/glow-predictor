@@ -255,7 +255,6 @@ function calcProbability(d, type, trendData) {
     prob += _calcSolarElevationCorrection(state.lat, month, type);
   }
 
-
   // 12. 雨后初晴加分
   if (d.precipProb < 20) {
     const _h = state.forecastData?.hourly;
