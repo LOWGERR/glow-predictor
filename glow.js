@@ -498,6 +498,7 @@ function openNearbySearch(type) {
   queryAllCategories();
 }
 
+
 function closeNearbyModal() {
   document.getElementById('nearbyModal').style.display = 'none';
   document.body.classList.remove('no-scroll');
@@ -998,6 +999,7 @@ function extractSunPathClouds(sunPathResults, eventType, eventISO) {
 // 气压急升常伴随天况转好（反气旋控制），可作辅助指标
 function getPressureTrend(data, di, type) {
   if (!data.hourly.surface_pressure) return null;
+
   const daily = data.daily;
   const hourly = data.hourly;
   const dateStr = daily.time[di];
@@ -1498,6 +1500,7 @@ function _calcSolarElevationCorrection(lat, month, type) {
 function buildCloudTrendChart(data, di, type) {
   const daily = data.daily;
   const hourly = data.hourly;
+
   const dateStr = daily.time[di];
   if (!dateStr) return '';
 
@@ -1998,6 +2001,7 @@ function calcQuality(d, type) {
   // 4. 低云：影响地平线视野
   if (cloudLow > 70) quality -= 15;
   else if (cloudLow > 50) quality -= 8;
+
   else if (cloudLow > 30) quality -= 3;
   else if (cloudLow < 8 && cloudMH >= 15) quality += 4;
 
@@ -2340,8 +2344,9 @@ function startCountdown(data) {
     const sr = new Date(daily.sunrise[di]);
     const ss = new Date(daily.sunset[di]);
 
-    $sunriseTime.textContent = sr.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-    $sunsetTime.textContent = ss.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    const timeOpts = { hour: '2-digit', minute: '2-digit', timeZone: data.timezone || 'Asia/Shanghai' };
+    $sunriseTime.textContent = sr.toLocaleTimeString('zh-CN', timeOpts);
+    $sunsetTime.textContent = ss.toLocaleTimeString('zh-CN', timeOpts);
 
     // === 太阳方位角静态显示（无需罗盘） ===
     if (dateStr && state.lat != null) {
@@ -2376,7 +2381,7 @@ function startCountdown(data) {
     // 晚蓝调：日落 → 日落后 baseDuration 分钟
     const beEnd = new Date(ss.getTime() + blueMs);
 
-    const fmt = (d) => d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    const fmt = (d) => d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', timeZone: data.timezone || 'Asia/Shanghai' });
     if ($blueMorning) $blueMorning.textContent = `${fmt(bmStart)} - ${fmt(sr)}`;
     if ($goldMorning) $goldMorning.textContent = `${fmt(sr)} - ${fmt(gmEnd)}`;
     if ($goldEvening) $goldEvening.textContent = `${fmt(geStart)} - ${fmt(ss)}`;
@@ -2406,7 +2411,7 @@ function startCountdown(data) {
     if (nextEvent) {
       const diff = nextEvent.time - now;
       const dayLabel = nextEvent.dayIdx === 0 ? '今天' : nextEvent.dayIdx === 1 ? '明天' : '后天';
-      const timeStr = nextEvent.time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+      const timeStr = nextEvent.time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', timeZone: data.timezone || 'Asia/Shanghai' });
       if (diff < 3600000) {
         $countdownBar.innerHTML = `⏰ <strong>${nextEvent.type}</strong> 即将到来 · ${dayLabel} ${timeStr} · 还有 <strong>${formatDuration(diff)}</strong>`;
         $countdownBar.style.background = nextEvent.type.includes('日出') ? 'rgba(255,152,0,0.18)' : 'rgba(224,64,251,0.18)';
@@ -2498,6 +2503,7 @@ function renderDemo() {
   const data = { daily, hourly };
   state.forecastData = data;
   renderAll(data);
+
 
   const banner = document.createElement('div');
   banner.className = 'demo-banner';
@@ -2665,7 +2671,7 @@ async function loadCloudMapData() {
     for (let c = 0; c < gridSize; c++) {
       const pLat = startLat + r * spacing;
       const pLon = startLon + c * spacing;
-      promises.push(fetchGridPoint(pLat, pLon, di));
+      promises.push(fetchGridPoint(pLat, pLon, dateStr));
     }
   }
 
@@ -2723,20 +2729,29 @@ async function loadCloudMapData() {
     _cloudMapMarkers.push(labelMarker);
   });
 
-  // 中心点分数
-  const centerResult = state.forecastData ?
-    calcScore(extractHourlyData(state.forecastData,
-      findHourlyIndex(state.forecastData, di, _cloudMapType)), _cloudMapType, null) : null;
+  // 中心点分数：用与主页面相同的 trendData 计算
+  let centerScore = '--';
+  let centerColor = '#888';
+  let centerLabel = '';
+  if (state.forecastData) {
+    const trend = getTrendData(state.forecastData, di, _cloudMapType);
+    const centerData = extractHourlyData(state.forecastData,
+      findHourlyIndex(state.forecastData, di, _cloudMapType));
+    const centerResult = calcScore(centerData, _cloudMapType, trend);
+    centerScore = centerResult.score;
+    centerColor = scoreColor(centerResult.score);
+    centerLabel = scoreLabel(centerResult.score);
+  }
 
   infoEl.innerHTML = successCount > 0
-    ? `✅ ${successCount} 个采样点 · 中心评分 <span class="info-score" style="color:${centerResult ? scoreColor(centerResult.score) : '#888'}">${centerResult?.score || '--'}</span> ${centerResult ? scoreLabel(centerResult.score) : ''} · ${_cloudMapType === 'morning' ? '🌄 朝霞' : '🌅 晚霞'}`
+    ? `✅ ${successCount} 个采样点 · 中心评分 <span class="info-score" style="color:${centerColor}">${centerScore}</span> ${centerLabel} · ${_cloudMapType === 'morning' ? '🌄 朝霞' : '🌅 晚霞'}`
     : '❌ 采样失败，请重试';
 
   _cloudMapLoading = false;
 }
 
 // 获取单个网格点的气象数据
-async function fetchGridPoint(lat, lon, di) {
+async function fetchGridPoint(lat, lon, dateStr) {
   try {
     const params = new URLSearchParams({
       latitude: lat.toFixed(2),
@@ -2754,8 +2769,9 @@ async function fetchGridPoint(lat, lon, di) {
     const data = await res.json();
 
     // 找到目标时刻的小时索引
-    const dateStr = data.daily?.time?.[di];
-    if (!dateStr) return null;
+    // 确保 dateStr 在返回数据中存在
+    if (!data.daily?.time?.includes(dateStr)) return null;
+    const di = data.daily.time.indexOf(dateStr);
     const eventISO = _cloudMapType === 'morning'
       ? data.daily.sunrise?.[di] : data.daily.sunset?.[di];
     if (!eventISO) return null;
