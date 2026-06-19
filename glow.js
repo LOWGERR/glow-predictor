@@ -2236,6 +2236,7 @@ function buildTips(d, type) {
 
   if (type === 'morning' && d.temp < 8) {
     tips.push('🥶 清晨气温低，注意<strong>保暖和电池续航</strong>。');
+  }
 
   // v42: 霞光持续时间预测
   const _cMH = Math.max(d.cloudMid || 0, d.cloudHigh || 0);
@@ -2258,7 +2259,6 @@ function buildTips(d, type) {
   }
 
 
-  }
 
   // v41: 风速提示
   if (d.windSpeed != null) {
