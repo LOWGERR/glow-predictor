@@ -41,6 +41,11 @@ body {
   transform: translateY(12px);
   animation: fadeSlideUp 0.5s ease forwards;
 }
+
+/* 全局交互元素过渡 */
+button, .tab-btn, .factor, .nearby-item, .result-item {
+  transition: all 0.2s ease;
+}
 .weather-card { animation-delay: 0.08s; }
 .tab-bar { animation-delay: 0.16s; }
 .prediction-card:nth-child(1) { animation-delay: 0.24s; }
@@ -54,9 +59,9 @@ body {
 
 /* === 头部 === */
 .header {
-  padding: 16px 4px 12px;
+  padding: 18px 6px 14px;
   background: linear-gradient(180deg, rgba(255,152,0,0.06) 0%, transparent 100%);
-  border-radius: 0 0 20px 20px;
+  border-radius: 0 0 22px 22px;
 }
 .header-top {
   display: flex;
@@ -88,17 +93,17 @@ body {
 
 .location-actions {
   display: flex;
-  gap: 6px;
-  margin: 6px 0 0;
+  gap: 8px;
+  margin: 8px 0 0;
 }
 .location-actions button {
   flex: 1;
-  height: 38px;
-  border-radius: 12px;
+  height: 40px;
+  border-radius: 14px;
   border: 1px solid var(--border);
   background: var(--card-bg);
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
@@ -129,11 +134,12 @@ body {
 .weather-card {
   background: linear-gradient(135deg, #1a1a35 0%, #15152e 100%);
   border-radius: var(--radius);
-  padding: 16px;
-  margin-top: 10px;
+  padding: 18px;
+  margin-top: 12px;
   border: 1px solid var(--border);
   position: relative;
   overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 /* 微光呼吸边框 */
 .weather-card::before {
@@ -215,9 +221,9 @@ body {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
 }
 .sunrise-block { background: rgba(255,152,0,0.08); }
 .sunset-block  { background: rgba(224,64,251,0.08); }
@@ -238,10 +244,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 10px;
-  padding: 8px 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
   background: rgba(255,255,255,0.03);
-  border-radius: 10px;
+  border-radius: 12px;
 }
 .az-item {
   display: flex;
@@ -261,11 +267,11 @@ body {
 .photo-hour-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 8px 12px;
   background: rgba(255,255,255,0.03);
-  border-radius: 8px;
-  font-size: 0.75rem;
+  border-radius: 10px;
+  font-size: 0.78rem;
 }
 /* 蓝调时刻左侧蓝色色条 */
 .photo-hour-item:nth-child(1),
@@ -283,12 +289,12 @@ body {
 
 /* 倒计时条 */
 .countdown-bar {
-  margin-top: 10px;
-  padding: 10px 14px;
+  margin-top: 12px;
+  padding: 12px 16px;
   background: rgba(255,152,0,0.08);
-  border-radius: 10px;
+  border-radius: 12px;
   text-align: center;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   color: var(--accent);
   font-weight: 500;
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
@@ -304,11 +310,12 @@ body {
 /* === 选项卡 === */
 .tab-bar {
   display: flex;
-  margin-top: 14px;
+  margin-top: 16px;
   background: var(--card-bg);
-  border-radius: 12px;
-  padding: 3px;
+  border-radius: 14px;
+  padding: 4px;
   border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 .tab-btn {
   flex: 1;
@@ -348,6 +355,11 @@ body {
   border-radius: var(--radius);
   overflow: hidden;
   border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.2s ease;
+}
+.prediction-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 .card-header {
   display: flex;
@@ -392,18 +404,19 @@ body {
   gap: 1px;
 }
 .dual-circle {
-  width: 40px; height: 40px;
+  width: 44px; height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 1rem;
   position: relative;
   background: conic-gradient(
     var(--circle-color, var(--accent)) calc(var(--pct, 75) * 3.6deg),
     rgba(255,255,255,0.06) 0deg
   );
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 .dual-circle::after {
   content: '';
@@ -487,10 +500,10 @@ body {
   margin-bottom: 8px;
 }
 .factor {
-  padding: 6px 8px;
+  padding: 8px 10px;
   background: rgba(255,255,255,0.025);
-  border-radius: 8px;
-  font-size: 0.72rem;
+  border-radius: 10px;
+  font-size: 0.78rem;
   text-align: center;
   transition: all 0.2s ease;
   border: 1px solid transparent;
@@ -518,11 +531,12 @@ body {
 
 /* === 图例（精简版） === */
 .legend {
-  margin-top: 16px;
-  padding: 10px 14px;
+  margin-top: 20px;
+  padding: 14px 18px;
   background: var(--card-bg);
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 .legend h3 { font-size: 0.78rem; margin-bottom: 6px; color: var(--text-dim); }
 .legend-items {
@@ -551,11 +565,12 @@ body {
 
 /* 最佳查看时机提示 */
 .timing-tip {
-  margin-top: 12px;
+  margin-top: 16px;
   background: var(--card-bg);
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--border);
   overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 .timing-tip summary {
   padding: 10px 14px;
@@ -664,6 +679,10 @@ body {
   .prediction-card {
     background: var(--card-bg2);
     border-color: rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+  .prediction-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 
   .card-header {
@@ -938,12 +957,12 @@ body {
 
 /* 演示模式横幅 */
 .demo-banner {
-  margin-top: 12px;
-  padding: 10px 14px;
+  margin-top: 16px;
+  padding: 12px 16px;
   background: rgba(255, 152, 0, 0.08);
   border: 1px solid rgba(255, 152, 0, 0.2);
-  border-radius: 12px;
-  font-size: 0.78rem;
+  border-radius: 14px;
+  font-size: 0.82rem;
   color: var(--accent);
   text-align: center;
   animation: fadeSlideUp 0.4s ease forwards;
@@ -951,20 +970,21 @@ body {
 
 /* 图表区域标题 */
 .card-section-label {
-  font-size: 0.75rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--text-dim);
-  margin: 10px 0 6px;
+  margin: 12px 0 8px;
   padding: 0;
 }
 
 /* 云层趋势图容器 */
 .chart-container {
-  margin: 8px 0;
-  padding: 8px;
-  background: rgba(255,255,255,0.02);
-  border-radius: 10px;
+  margin: 10px 0;
+  padding: 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 12px;
   overflow-x: auto;
+  border: 1px solid var(--border);
 }
 .chart-container svg {
   display: block;
@@ -1041,8 +1061,8 @@ body {
 /* 附近摄影点 + 分享按钮行（弱化显示） */
 .btn-row {
   display: flex;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 10px;
+  margin-top: 12px;
 }
 .btn-row .nearby-btn,
 .btn-row .share-btn {
@@ -1050,16 +1070,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 8px 8px;
+  gap: 6px;
+  padding: 10px 12px;
   border: none;
-  border-radius: 8px;
-  font-size: 0.72rem;
-  font-weight: 400;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
   -webkit-tap-highlight-color: transparent;
-  opacity: 0.65;
+  opacity: 0.75;
 }
 .btn-row .nearby-btn {
   background: transparent;
@@ -1074,11 +1094,20 @@ body {
 
 /* 数据来源（多模型标签）弱化 */
 .data-source {
-  margin-top: 6px;
-  font-size: 0.65rem;
+  margin-top: 8px;
+  font-size: 0.72rem;
   color: var(--text-secondary);
-  opacity: 0.55;
+  opacity: 0.65;
   text-align: center;
+}
+
+/* Footer */
+.footer {
+  margin-top: 28px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  opacity: 0.7;
 }
 
 /* 滚动条美化 */
