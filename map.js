@@ -1,5 +1,3 @@
-import { state, AMAP_KEY, AMAP_SEARCH_URL, FORECAST_URL } from './state.js';
-import { calcScore, scoreColor, scoreLabel, findHourlyIndex } from './scoring.js';
 
 function _transformLat(x, y) {
   let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
@@ -423,22 +421,3 @@ async function loadCloudMapData() {
   _cloudMapLoading = false;
 }
 
-export {
-  _transformLat,
-  wgs84ToGcj02,
-  convertWGS84toGCJ02,
-  convertGCJ02toWGS84,
-  confirmMapPick,
-  closeNearbyModal,
-  queryAllCategories,
-  searchNearbyPOI,
-  showNearbyPOIOnMap,
-  navigateToPOI,
-  distance,
-  doAutoSearch,
-  doPlaceSearch,
-  renderSearchResults,
-  mapSearch,
-  getAmapRegeo,
-  loadCloudMapData
-};

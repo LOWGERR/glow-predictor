@@ -73,6 +73,8 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
   font-weight: 700;
   letter-spacing: 0.01em;
 }
+.theme-toggle { background: none; border: none; font-size: 1.1rem; cursor: pointer; padding: 4px 8px; opacity: 0.7; transition: opacity 0.2s; position: absolute; left: 16px; }
+.theme-toggle:hover { opacity: 1; }
 .header-badge {
   font-size: 0.72rem;
   color: var(--accent);
@@ -1214,6 +1216,38 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
 }
 
 
+
+/* 亮色模式 */
+[data-theme="light"] {
+  --bg: #f5f5f7;
+  --card-bg: #ffffff;
+  --card-bg2: #f0f0f2;
+  --text: #1a1a2e;
+  --text-dim: #666;
+  --text-secondary: #888;
+  --border: rgba(0,0,0,0.1);
+  --accent: #ff9500;
+  --good: #34c759;
+  --warn: #ff9500;
+  --bad: #ff3b30;
+  --subtle: rgba(0,0,0,0.03);
+  color-scheme: light;
+}
+[data-theme="light"] .app {
+  background: linear-gradient(135deg, #f5f5f7 0%, #e8e8ed 100%);
+}
+[data-theme="light"] .header-badge {
+  color: #666;
+  background: rgba(0,0,0,0.05);
+}
+[data-theme="light"] .score-label,
+[data-theme="light"] .factor-name {
+  color: #888;
+}
+[data-theme="light"] .demo-banner {
+  background: rgba(255,149,0,0.1);
+  border-color: rgba(255,149,0,0.3);
+}
 /* 常用位置收藏 */
 .fav-btn, .fav-list-btn {
   background: none; border: none; font-size: 1rem; cursor: pointer;

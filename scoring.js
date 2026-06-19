@@ -1,4 +1,3 @@
-import { state } from './state.js';
 
 function _calcSolarAzimuth(lat, dateStr, type) {
   const date = new Date(dateStr + (type === 'sunrise' ? 'T06:00:00' : 'T18:00:00'));
@@ -762,25 +761,3 @@ function getPressureTrend(data, di, type) {
   };
 }
 
-export {
-  _calcSolarAzimuth,
-  _calcCloudBaseHeight,
-  _calcCloudContinuity,
-  _calcSolarElevationCorrection,
-  _calcCloudTypeScore,
-  _calcVisibilityScore,
-  _calcHumidityScore,
-  calcProbability,
-  calcQuality,
-  calcScore,
-  calcConfidence,
-  _getAOD,
-  _getSunPathScore,
-  getTrendData,
-  buildCloudTrendChart,
-  scoreColor,
-  scoreLabel,
-  findHourlyIndex,
-  extractSunPathClouds,
-  getPressureTrend
-};

@@ -1,5 +1,3 @@
-import { state, DOM } from './state.js';
-import { calcScore, calcConfidence, calcProbability, calcQuality, scoreColor, scoreLabel, _getAOD, _getSunPathScore, getTrendData, buildCloudTrendChart, findHourlyIndex } from './scoring.js';
 
 function showErrorBanner(message, showRetry) {
   let banner = document.getElementById('errorBanner');
@@ -471,16 +469,3 @@ function renderDemo() {
   $predictions.insertAdjacentElement('beforebegin', banner);
 }
 
-export {
-  showErrorBanner,
-  hideErrorBanner,
-  retryFetch,
-  renderAll,
-  handleTabClick,
-  renderTabPredictions,
-  sharePrediction,
-  buildTips,
-  getSourceLabel,
-  startCountdown,
-  renderDemo
-};

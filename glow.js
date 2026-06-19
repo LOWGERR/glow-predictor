@@ -1,7 +1,3 @@
-import { state, DOM, AMAP_KEY, AMAP_SEARCH_URL, GEO_URL, FORECAST_URL, AIR_QUALITY_URL } from './state.js';
-import { calcScore, calcProbability, calcQuality, calcConfidence, scoreColor, scoreLabel, _getAOD, _getSunPathScore, getTrendData, buildCloudTrendChart, findHourlyIndex, extractSunPathClouds, getPressureTrend, _calcSolarAzimuth, _calcCloudBaseHeight, _calcCloudContinuity, _calcSolarElevationCorrection, _calcCloudTypeScore, _calcVisibilityScore, _calcHumidityScore } from './scoring.js';
-import { confirmMapPick, closeNearbyModal, queryAllCategories, searchNearbyPOI, showNearbyPOIOnMap, navigateToPOI, distance, doAutoSearch, doPlaceSearch, renderSearchResults, mapSearch, getAmapRegeo, loadCloudMapData, wgs84ToGcj02, convertWGS84toGCJ02, convertGCJ02toWGS84 } from './map.js';
-import { showErrorBanner, hideErrorBanner, retryFetch, renderAll, handleTabClick, renderTabPredictions, sharePrediction, buildTips, getSourceLabel, startCountdown, renderDemo } from './ui.js';
 
 const MARKER_SVG = 'data:image/svg+xml;base64,' + btoa(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 34">' +
@@ -61,6 +57,41 @@ function initFavorites() {
   updateFavButton();
 }
 
+
+// === 暗色/亮色模式切换 ===
+function toggleTheme() {
+  const current = localStorage.getItem('glow_theme') || 'auto';
+  const next = current === 'auto' ? 'dark' : current === 'dark' ? 'light' : 'auto';
+  localStorage.setItem('glow_theme', next);
+  applyTheme(next);
+}
+function applyTheme(mode) {
+  const btn = document.getElementById('themeToggle');
+  if (mode === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    if (btn) btn.textContent = '☀️';
+  } else if (mode === 'dark') {
+    document.documentElement.removeAttribute('data-theme');
+    if (btn) btn.textContent = '🌙';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    if (btn) btn.textContent = '🌗';
+  }
+}
+
+// === 友好错误处理 ===
+function showErrorCard(message, showRetry) {
+  const banner = document.getElementById('demoBanner');
+  if (banner) {
+    banner.style.display = 'block';
+    banner.innerHTML = '⚠️ ' + message + (showRetry ? ' <button onclick="retryFetch()" style="margin-left:8px;padding:4px 12px;border:1px solid #fff;border-radius:8px;background:transparent;color:#fff;font-size:0.8rem;cursor:pointer;">重试</button>' : '');
+  }
+}
+function retryFetch() {
+  const banner = document.getElementById('demoBanner');
+  if (banner) banner.style.display = 'none';
+  fetchForecast();
+}
 function init() {
   bindDOM();
   // 自动读取并显示版本号（从 glow.js?v=N 中提取）
