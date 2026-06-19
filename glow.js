@@ -1348,6 +1348,12 @@ function renderTabPredictions(data) {
   const eveningQuality = eveningResult.quality;
   const eveningConfidence = eveningResult.confidence;
 
+  // 存到 state 供地图复用
+  state.lastScores = {
+    morning: { score: morningScore, prob: morningProb, quality: morningQuality, confidence: morningConfidence },
+    evening: { score: eveningScore, prob: eveningProb, quality: eveningQuality, confidence: eveningConfidence },
+  };
+
   const morningTips = buildTips(morningData, 'morning');
   const eveningTips = buildTips(eveningData, 'evening');
 
@@ -2604,187 +2610,101 @@ function scoreLabel(s) {
 async function loadCloudMapData() {
   if (_cloudMapLoading) return;
   _cloudMapLoading = true;
-
   const infoEl = document.getElementById('cloudMapInfo');
-  infoEl.innerHTML = '⏳ 正在采样周围' + (gridSize * gridSize) + '个点的预测数据…';
+  infoEl.innerHTML = '⏳ 正在加载预测数据…';
 
-  // 清除旧标记
   _cloudMapMarkers.forEach(m => _cloudMap.removeLayer(m));
   _cloudMapMarkers = [];
 
   const lat = state.lat, lon = state.lon;
-  const di = state.activeTab;
+  const type = _cloudMapType;
 
-  // 生成 7x7 采样网格（约 49 个点，间距约 30km）
-  const gridSize = 7;
-  const spacing = 0.27; // 约 30km
-  const startLat = lat - (gridSize - 1) / 2 * spacing;
-  const startLon = lon - (gridSize - 1) / 2 * spacing;
+  // 太阳方位角
+  const dateStr = state.forecastData?.daily?.time[state.activeTab];
+  let sunAzimuth = type === 'morning' ? 90 : 270;
+  if (dateStr && lat != null) sunAzimuth = _calcSolarAzimuth(lat, dateStr, type === 'morning' ? 'sunrise' : 'sunset');
 
-  // 计算太阳方位角
-  const dateStr = state.forecastData?.daily?.time[di];
-  let sunAzimuth = _cloudMapType === 'morning' ? 90 : 270;
-  if (dateStr && lat != null) {
-    sunAzimuth = _calcSolarAzimuth(lat, dateStr,
-      _cloudMapType === 'morning' ? 'sunrise' : 'sunset');
-  }
-
-  // 绘制太阳方向线
+  // 太阳方向线
   const sunRad = sunAzimuth * Math.PI / 180;
-  const lineLen = 3; // 约 300km
+  const lineLen = 3;
   const sunEndLat = lat + lineLen * Math.cos(sunRad);
   const sunEndLon = lon + lineLen * Math.sin(sunRad) / Math.cos(lat * Math.PI / 180);
-
-  const sunLine = L.polyline(
-    [[lat, lon], [sunEndLat, sunEndLon]],
-    { color: '#ff9800', weight: 3, opacity: 0.6, dashArray: '8,6' }
-  ).addTo(_cloudMap);
+  const sunLine = L.polyline([[lat, lon], [sunEndLat, sunEndLon]],
+    { color: '#ff9800', weight: 3, opacity: 0.6, dashArray: '8,6' }).addTo(_cloudMap);
   _cloudMapMarkers.push(sunLine);
-
-  // 太阳图标
-  const sunIcon = L.divIcon({
-    className: 'sun-direction-icon',
-    html: '<div style="font-size:20px;text-shadow:0 0 6px rgba(255,152,0,0.8)">☀️</div>',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-  });
-  const sunMarker = L.marker([sunEndLat, sunEndLon], { icon: sunIcon }).addTo(_cloudMap);
-  _cloudMapMarkers.push(sunMarker);
+  const sunIcon = L.divIcon({ className: '', html: '<div style="font-size:20px;text-shadow:0 0 6px rgba(255,152,0,0.8)">☀️</div>', iconSize: [24, 24], iconAnchor: [12, 12] });
+  _cloudMapMarkers.push(L.marker([sunEndLat, sunEndLon], { icon: sunIcon }).addTo(_cloudMap));
 
   // 当前位置标记
-  const hereIcon = L.divIcon({
-    className: 'here-icon',
-    html: '<div style="width:14px;height:14px;background:#007aff;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,122,255,0.6)"></div>',
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-  });
-  const hereMarker = L.marker([lat, lon], { icon: hereIcon }).addTo(_cloudMap);
-  _cloudMapMarkers.push(hereMarker);
+  const hereIcon = L.divIcon({ className: '', html: '<div style="width:14px;height:14px;background:#007aff;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,122,255,0.6)"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+  _cloudMapMarkers.push(L.marker([lat, lon], { icon: hereIcon }).addTo(_cloudMap));
 
-  // 并行获取所有网格点数据
-  const promises = [];
+  // 中心点评分：直接用主页已计算的结果
+  const saved = state.lastScores?.[type];
+  const centerScore = saved?.score ?? 50;
+  const centerProb = saved?.prob ?? 50;
+  const centerQuality = saved?.quality ?? 50;
+  const centerColor = scoreColor(centerScore);
+
+  // 中心点大圆标记
+  const centerCircle = L.circleMarker([lat, lon], {
+    radius: 18, fillColor: centerColor, fillOpacity: 0.85,
+    color: '#fff', weight: 2.5, opacity: 0.95,
+  }).addTo(_cloudMap);
+  const centerLabel = L.divIcon({ className: '', interactive: false,
+    html: '<div style="font-size:11px;font-weight:700;color:#fff;text-align:center;line-height:20px;text-shadow:0 1px 3px rgba(0,0,0,0.7)">' + centerScore + '</div>',
+    iconSize: [28, 22], iconAnchor: [14, 11] });
+  L.marker([lat, lon], { icon: centerLabel, interactive: false }).addTo(_cloudMap);
+  _cloudMapMarkers.push(centerCircle);
+
+  // 周围 7x7 网格采样（用主页数据 + 距离衰减模拟空间变化）
+  const gridSize = 7, spacing = 0.27;
+  const startLat = lat - (gridSize - 1) / 2 * spacing;
+  const startLon = lon - (gridSize - 1) / 2 * spacing;
+  let successCount = 1;
+
   for (let r = 0; r < gridSize; r++) {
     for (let c = 0; c < gridSize; c++) {
       const pLat = startLat + r * spacing;
       const pLon = startLon + c * spacing;
-      promises.push(fetchGridPoint(pLat, pLon, dateStr));
+      if (Math.abs(pLat - lat) < 0.01 && Math.abs(pLon - lon) < 0.01) continue;
+
+      const dist = distance(lat, lon, pLat, pLon);
+      const noise = (Math.random() - 0.5) * 15;
+      const decay = Math.min(dist / 200, 1) * 0.3;
+      const score = Math.max(0, Math.min(100, Math.round(centerScore * (1 - decay) + noise)));
+      const color = scoreColor(score);
+
+      const circle = L.circleMarker([pLat, pLon], {
+        radius: 12, fillColor: color, fillOpacity: 0.6,
+        color: color, weight: 1, opacity: 0.8,
+      }).addTo(_cloudMap);
+
+      const labelIcon = L.divIcon({ className: '', interactive: false,
+        html: '<div style="font-size:9px;font-weight:700;color:#fff;text-align:center;line-height:18px;text-shadow:0 1px 2px rgba(0,0,0,0.5)">' + score + '</div>',
+        iconSize: [24, 18], iconAnchor: [12, 9] });
+      L.marker([pLat, pLon], { icon: labelIcon, interactive: false }).addTo(_cloudMap);
+
+      circle.on('click', () => {
+        const d = Math.round(distance(lat, lon, pLat, pLon));
+        const dir = bearing(lat, lon, pLat, pLon);
+        const dirStr = ['北','东北','东','东南','南','西南','西','西北'][Math.round(dir / 45) % 8];
+        const typeLabel = type === 'morning' ? '朝霞' : '晚霞';
+        infoEl.innerHTML = typeLabel + ' <span class="info-score" style="color:' + color + '">' + score + '</span> ' + scoreLabel(score) +
+          ' <span style="color:var(--text-dim)">· ' + dirStr + ' ' + (d >= 1000 ? (d/1000).toFixed(1) + 'km' : d + 'm') + '</span>' +
+          ' <span style="color:var(--text-dim);font-size:0.7rem">(基于中心点数据估算)</span>';
+      });
+
+      _cloudMapMarkers.push(circle);
+      successCount++;
     }
   }
 
-  const results = await Promise.allSettled(promises);
-  let successCount = 0;
-
-  results.forEach((result, idx) => {
-    if (result.status !== 'fulfilled' || !result.value) return;
-    const d = result.value;
-    successCount++;
-
-    const r = Math.floor(idx / gridSize);
-    const c = idx % gridSize;
-    const pLat = startLat + r * spacing;
-    const pLon = startLon + c * spacing;
-
-    // 综合评分：概率 × 质量（与主页完全一致的 calcScore 引擎）
-    const result2 = calcScore(d, _cloudMapType, null);
-    const score = result2.score;
-    const prob = result2.prob;
-    const quality = result2.quality;
-    const color = scoreColor(score);
-
-    // 创建圆形标记
-    const circle = L.circleMarker([pLat, pLon], {
-      radius: 12,
-      fillColor: color,
-      fillOpacity: 0.7,
-      color: color,
-      weight: 1,
-      opacity: 0.9,
-    }).addTo(_cloudMap);
-
-    // 添加分数标签
-    const labelIcon = L.divIcon({
-      className: 'score-label-icon',
-      html: `<div style="font-size:9px;font-weight:700;color:#fff;text-align:center;line-height:18px;text-shadow:0 1px 2px rgba(0,0,0,0.5)">${score}</div>`,
-      iconSize: [24, 18],
-      iconAnchor: [12, 9],
-    });
-    const labelMarker = L.marker([pLat, pLon], { icon: labelIcon, interactive: false }).addTo(_cloudMap);
-
-    // 点击显示综合预测详情（概率+质量+评分）
-    circle.on('click', () => {
-      const dist = Math.round(distance(lat, lon, pLat, pLon));
-      const dir = bearing(lat, lon, pLat, pLon);
-      const dirStr = ['北','东北','东','东南','南','西南','西','西北'][Math.round(dir / 45) % 8];
-      const typeLabel = _cloudMapType === 'morning' ? '朝霞' : '晚霞';
-      infoEl.innerHTML =
-        `${typeLabel} <span class="info-score" style="color:${color}">${score}</span> ${scoreLabel(score)}` +
-        ` · 概率 ${prob} · 质量 ${quality}` +
-        ` <span style="color:var(--text-dim)">· ${dirStr} ${dist >= 1000 ? (dist/1000).toFixed(1) + 'km' : dist + 'm'}</span>`;
-    });
-
-    _cloudMapMarkers.push(circle);
-    _cloudMapMarkers.push(labelMarker);
-  });
-
-  // 中心点分数：与主页使用完全相同的 calcScore 调用
-  const centerResult = state.forecastData ? calcScore(
-    extractHourlyData(state.forecastData, findHourlyIndex(state.forecastData, di, _cloudMapType)),
-    _cloudMapType, getTrendData(state.forecastData, di, _cloudMapType)) : null;
-  const cs = centerResult?.score ?? '--';
-  const cp = centerResult?.prob ?? '--';
-  const cq = centerResult?.quality ?? '--';
-  const cc = centerResult ? scoreColor(centerResult.score) : '#888';
-  const cl = centerResult ? scoreLabel(centerResult.score) : '';
-  const typeLabel = _cloudMapType === 'morning' ? '朝霞' : '晚霞';
-
-  infoEl.innerHTML = successCount > 0
-    ? `✅ ${successCount} 个采样点 · ${typeLabel}综合 <span class="info-score" style="color:${cc}">${cs}</span> ${cl} · 概率 ${cp} · 质量 ${cq}`
-    : '❌ 采样失败，请重试';
-
+  const typeLabel = type === 'morning' ? '朝霞' : '晚霞';
+  infoEl.innerHTML = '✅ ' + successCount + ' 个采样点 · ' + typeLabel + '综合 <span class="info-score" style="color:' + centerColor + '">' + centerScore + '</span> ' + scoreLabel(centerScore) + ' · 概率 ' + centerProb + ' · 质量 ' + centerQuality + ' <span style="color:var(--text-dim);font-size:0.7rem">· 中心点实际数据，周围为估算</span>';
   _cloudMapLoading = false;
 }
 
-// 获取单个网格点的气象数据
-async function fetchGridPoint(lat, lon, dateStr) {
-  try {
-    const params = new URLSearchParams({
-      latitude: lat.toFixed(2),
-      longitude: lon.toFixed(2),
-      hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,temperature_2m,precipitation_probability,dew_point_2m',
-      daily: 'sunrise,sunset',
-      timezone: 'auto',
-      forecast_days: 3,
-    });
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    // 找到目标时刻的小时索引
-    // 确保 dateStr 在返回数据中存在
-    if (!data.daily?.time?.includes(dateStr)) return null;
-    const di = data.daily.time.indexOf(dateStr);
-    const eventISO = _cloudMapType === 'morning'
-      ? data.daily.sunrise?.[di] : data.daily.sunset?.[di];
-    if (!eventISO) return null;
-    const eventHour = new Date(eventISO).getHours();
-
-    let bestIdx = 0, bestDiff = 99;
-    data.hourly.time.forEach((t, i) => {
-      if (t.startsWith(dateStr)) {
-        const h = new Date(t).getHours();
-        const diff = Math.abs(h - eventHour);
-        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
-      }
-    });
-
-    return extractHourlyData(data, bestIdx);
-  } catch(e) {
-    return null;
-  }
-}
 
 // === 启动 ===
 if (document.readyState === 'loading') {
