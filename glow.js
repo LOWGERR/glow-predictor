@@ -2691,12 +2691,11 @@ async function loadCloudMapData() {
     const pLat = startLat + r * spacing;
     const pLon = startLon + c * spacing;
 
-    // 计算该点评分（临时清除全局 AOD/光路数据，避免 grid point 用中心点的数据）
-    const savedAod = state.aodData, savedSp = state.sunPathData, savedPt = state.pressureTrend;
-    state.aodData = null; state.sunPathData = null; state.pressureTrend = null;
+    // 计算该点评分：使用完整 calcScore 引擎
+    // AOD/光路/气压是区域性大气条件，200km 范围内基本一致，共享中心点数据
+    // 每个 grid point 用自己的云量/湿度/能见度/降水数据
     const result2 = calcScore(d, _cloudMapType, null);
     const score = result2.score;
-    state.aodData = savedAod; state.sunPathData = savedSp; state.pressureTrend = savedPt;
     const color = scoreColor(score);
 
     // 创建圆形标记
