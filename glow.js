@@ -108,6 +108,16 @@ function init() {
   // $locateBtn.addEventListener('click', autoLocate);
   document.getElementById('locateBtn').addEventListener('click', autoLocate);
 
+  // v45: 暗色模式切换
+  const _themeBtn = document.getElementById('themeToggle');
+  if (_themeBtn) {
+    _themeBtn.addEventListener('click', toggleTheme);
+    applyTheme(localStorage.getItem('glow_theme') || 'auto');
+  }
+
+  // v45: 常用位置收藏
+  initFavorites();
+
   // 欢迎引导：首次打开显示
   const _savedLoc = localStorage.getItem('glow_predictor_location');
   if (!_savedLoc) {
@@ -494,7 +504,7 @@ window.toggleCloudMapType = function() { /* handled in map.js */ };
 window.sharePrediction = sharePrediction;
 window.selectLocation = selectLocation;
 window.autoLocate = autoLocate;
-window.openMapPicker = function() { /* handled inline */ };
+// openMapPicker defined in ui.js
 window.retryFetch = retryFetch;
 window.renderDemo = renderDemo;
 
