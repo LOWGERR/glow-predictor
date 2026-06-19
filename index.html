@@ -9,7 +9,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>朝霞晚霞预测 · 摄影助手</title>
-<link rel="stylesheet" href="style.css?t=35">
+<link rel="stylesheet" href="style.css?t=36">
 </head>
 <body>
 <div class="app">
@@ -17,7 +17,7 @@
   <header class="header">
     <div class="header-top">
       <h1> 朝霞晚霞</h1>
-      <span class="header-badge">摄影助手 v35</span>
+      <span class="header-badge">摄影助手 v36 · 云层地图</span>
     </div>
     <div class="location-row" id="locationRow">
       <span class="loc-icon">📍</span>
@@ -186,6 +186,65 @@
 
 <script src="https://webapi.amap.com/maps?v=2.0&key=9a559408bacf3862588c08ad3a273edc"></script>
 
+<!-- 云层地图弹窗 -->
+<div class="cloud-map-modal" id="cloudMapModal" style="display:none">
+  <div class="map-header">
+    <button class="map-cancel-btn" id="cloudMapClose">←</button>
+    <span class="map-title">🗺️ 区域云层地图</span>
+    <button class="map-confirm-btn" id="cloudMapRefresh">🔄</button>
+  </div>
+  <div class="cloud-map-container" id="cloudMapContainer"></div>
+  <div class="cloud-map-legend">
+    <span class="cml-item"><span class="cml-dot" style="background:#ff1744"></span>大烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#e040fb"></span>优质</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#4caf50"></span>好烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#ffeb3b"></span>小烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#ff9800"></span>微烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#888"></span>无烧</span>
+    <span class="cml-item" style="margin-left:8px">☀️ = 太阳方向</span>
+  </div>
+  <div class="cloud-map-info" id="cloudMapInfo">点击地图上的点查看预测详情</div>
+</div>
+
+<!-- 云层地图弹窗 -->
+<div class="cloud-map-modal" id="cloudMapModal" style="display:none">
+  <div class="cloud-map-header">
+    <button class="map-cancel-btn" id="cloudMapClose">←</button>
+    <span class="map-title">🗺️ 区域云层地图</span>
+    <button class="map-confirm-btn" id="cloudMapToggle" style="font-size:0.8rem">切换朝/晚霞</button>
+  </div>
+  <div class="cloud-map-container" id="cloudMapContainer"></div>
+  <div class="cloud-map-legend">
+    <span class="cml-item"><span class="cml-dot" style="background:#ff1744"></span>大烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#e040fb"></span>优质</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#4caf50"></span>好烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#ffeb3b"></span>小烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#ff9800"></span>微烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#888"></span>无烧</span>
+  </div>
+  <div class="cloud-map-info" id="cloudMapInfo">加载中…</div>
+</div>
+
+<!-- 云层地图弹窗 -->
+<div class="cloud-map-modal" id="cloudMapModal" style="display:none">
+  <div class="cloud-map-header">
+    <button class="map-cancel-btn" id="cloudMapClose">←</button>
+    <span class="map-title">🗺️ 云层质量地图</span>
+    <button class="map-confirm-btn" id="cloudMapToggle">🌅 晚霞</button>
+  </div>
+  <div class="cloud-map-container" id="cloudMapContainer"></div>
+  <div class="cloud-map-legend">
+    <span class="cml-item"><span class="cml-dot" style="background:#ff1744"></span>大烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#e040fb"></span>优质</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#4caf50"></span>好烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#ffeb3b"></span>小烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#ff9800"></span>微烧</span>
+    <span class="cml-item"><span class="cml-dot" style="background:#888"></span>无烧</span>
+    <span class="cml-arrow">☀️ 太阳方向</span>
+  </div>
+  <div class="cloud-map-info" id="cloudMapInfo">点击地图上的点查看预测详情</div>
+</div>
+
 <!-- 附近摄影点搜索弹窗 -->
 <div class="nearby-modal" id="nearbyModal" style="display:none">
   <div class="nearby-header">
@@ -198,6 +257,8 @@
   </div>
 </div>
 
-<script src="glow.js?v=35"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="glow.js?v=36"></script>
 </body>
 </html>

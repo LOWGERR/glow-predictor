@@ -128,6 +128,12 @@ function bindDOM() {
   const $nClose = document.getElementById('nearbyClose');
   if ($nClose) $nClose.addEventListener('click', closeNearbyModal);
 
+  // 云层地图弹窗
+  const $cmClose = document.getElementById('cloudMapClose');
+  if ($cmClose) $cmClose.addEventListener('click', closeCloudMap);
+  const $cmToggle = document.getElementById('cloudMapToggle');
+  if ($cmToggle) $cmToggle.addEventListener('click', toggleCloudMapType);
+
 
 }
 
@@ -2311,6 +2317,7 @@ function buildPredictionCard(label, type, score, prob, quality, confidence, data
       <div class="btn-row">
         <button class="nearby-btn" onclick="openNearbySearch('${type}')">📷 附近摄影点</button>
         <button class="share-btn" onclick="sharePrediction(${score}, '${type}', '${timeRange}', '${verdictText}')">📤 分享预测</button>
+        <button class="share-btn" onclick="openCloudMap()">🗺️ 云层地图</button>
       </div>
       <div class="data-source">🌐 ${getSourceLabel()}${state.aodData ? " · AOD" : ""}${state.sunPathData ? " · 光路" : ""}${confidence ? " · 置信度" + confidence + "%" : ""}</div>
     </div>
@@ -2496,6 +2503,270 @@ function renderDemo() {
   banner.className = 'demo-banner';
   banner.textContent = '⚠️ 当前为演示模式，数据为模拟。联网后将展示真实预测。';
   $predictions.insertAdjacentElement('beforebegin', banner);
+}
+
+
+// 找到目标日期+日出/日落时刻的小时索引
+function findHourlyIndex(data, di, type) {
+  if (!data || !data.hourly || !data.daily) return 0;
+  const dateStr = data.daily.time[di];
+  const eventISO = type === 'morning' ? data.daily.sunrise?.[di] : data.daily.sunset?.[di];
+  if (!dateStr || !eventISO) return 0;
+  const eventHour = new Date(eventISO).getHours();
+  let bestIdx = 0, bestDiff = 99;
+  data.hourly.time.forEach((t, i) => {
+    if (t.startsWith(dateStr)) {
+      const h = new Date(t).getHours();
+      const diff = Math.abs(h - eventHour);
+      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    }
+  });
+  return bestIdx;
+}
+
+// ════════════════════════════════════════════════════════════
+// 🆕 v36: 区域云层质量地图
+// ════════════════════════════════════════════════════════════
+let _cloudMap = null;
+let _cloudMapMarkers = [];
+let _cloudMapType = 'evening'; // 'morning' | 'evening'
+let _cloudMapLoading = false;
+
+function openCloudMap() {
+  if (!state.lat || !state.lon) {
+    alert('请先获取位置');
+    return;
+  }
+  document.getElementById('cloudMapModal').style.display = 'flex';
+  document.body.classList.add('no-scroll');
+
+  // 初始化地图
+  setTimeout(() => {
+    if (!_cloudMap) {
+      _cloudMap = L.map('cloudMapContainer', {
+        center: [state.lat, state.lon],
+        zoom: 9,
+        zoomControl: true,
+      });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 18,
+      }).addTo(_cloudMap);
+    } else {
+      _cloudMap.invalidateSize();
+      _cloudMap.setView([state.lat, state.lon], 9);
+    }
+    loadCloudMapData();
+  }, 200);
+}
+
+function closeCloudMap() {
+  document.getElementById('cloudMapModal').style.display = 'none';
+  document.body.classList.remove('no-scroll');
+}
+
+function toggleCloudMapType() {
+  _cloudMapType = _cloudMapType === 'evening' ? 'morning' : 'evening';
+  document.getElementById('cloudMapToggle').textContent =
+    _cloudMapType === 'evening' ? '🌅 晚霞' : '🌄 朝霞';
+  loadCloudMapData();
+}
+
+// 获取评分对应颜色
+function scoreColor(s) {
+  if (s >= 85) return '#ff1744';
+  if (s >= 70) return '#e040fb';
+  if (s >= 55) return '#4caf50';
+  if (s >= 35) return '#ffeb3b';
+  if (s >= 15) return '#ff9800';
+  return '#888';
+}
+
+// 获取评分等级文字
+function scoreLabel(s) {
+  if (s >= 85) return '大烧';
+  if (s >= 70) return '优质';
+  if (s >= 55) return '好烧';
+  if (s >= 35) return '小烧';
+  if (s >= 15) return '微烧';
+  return '无烧';
+}
+
+async function loadCloudMapData() {
+  if (_cloudMapLoading) return;
+  _cloudMapLoading = true;
+
+  const infoEl = document.getElementById('cloudMapInfo');
+  infoEl.innerHTML = '⏳ 正在采样周围云层数据…';
+
+  // 清除旧标记
+  _cloudMapMarkers.forEach(m => _cloudMap.removeLayer(m));
+  _cloudMapMarkers = [];
+
+  const lat = state.lat, lon = state.lon;
+  const di = state.activeTab;
+
+  // 生成 7x7 采样网格（约 49 个点，间距约 30km）
+  const gridSize = 7;
+  const spacing = 0.27; // 约 30km
+  const startLat = lat - (gridSize - 1) / 2 * spacing;
+  const startLon = lon - (gridSize - 1) / 2 * spacing;
+
+  // 计算太阳方位角
+  const dateStr = state.forecastData?.daily?.time[di];
+  let sunAzimuth = _cloudMapType === 'morning' ? 90 : 270;
+  if (dateStr && lat != null) {
+    sunAzimuth = _calcSolarAzimuth(lat, dateStr,
+      _cloudMapType === 'morning' ? 'sunrise' : 'sunset');
+  }
+
+  // 绘制太阳方向线
+  const sunRad = sunAzimuth * Math.PI / 180;
+  const lineLen = 3; // 约 300km
+  const sunEndLat = lat + lineLen * Math.cos(sunRad);
+  const sunEndLon = lon + lineLen * Math.sin(sunRad) / Math.cos(lat * Math.PI / 180);
+
+  const sunLine = L.polyline(
+    [[lat, lon], [sunEndLat, sunEndLon]],
+    { color: '#ff9800', weight: 3, opacity: 0.6, dashArray: '8,6' }
+  ).addTo(_cloudMap);
+  _cloudMapMarkers.push(sunLine);
+
+  // 太阳图标
+  const sunIcon = L.divIcon({
+    className: 'sun-direction-icon',
+    html: '<div style="font-size:20px;text-shadow:0 0 6px rgba(255,152,0,0.8)">☀️</div>',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+  const sunMarker = L.marker([sunEndLat, sunEndLon], { icon: sunIcon }).addTo(_cloudMap);
+  _cloudMapMarkers.push(sunMarker);
+
+  // 当前位置标记
+  const hereIcon = L.divIcon({
+    className: 'here-icon',
+    html: '<div style="width:14px;height:14px;background:#007aff;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,122,255,0.6)"></div>',
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+  const hereMarker = L.marker([lat, lon], { icon: hereIcon }).addTo(_cloudMap);
+  _cloudMapMarkers.push(hereMarker);
+
+  // 并行获取所有网格点数据
+  const promises = [];
+  for (let r = 0; r < gridSize; r++) {
+    for (let c = 0; c < gridSize; c++) {
+      const pLat = startLat + r * spacing;
+      const pLon = startLon + c * spacing;
+      promises.push(fetchGridPoint(pLat, pLon, di));
+    }
+  }
+
+  const results = await Promise.allSettled(promises);
+  let successCount = 0;
+
+  results.forEach((result, idx) => {
+    if (result.status !== 'fulfilled' || !result.value) return;
+    const d = result.value;
+    successCount++;
+
+    const r = Math.floor(idx / gridSize);
+    const c = idx % gridSize;
+    const pLat = startLat + r * spacing;
+    const pLon = startLon + c * spacing;
+
+    // 计算该点评分
+    const trendData = null; // 网格点不做趋势分析（太慢）
+    const result2 = calcScore(d, _cloudMapType, trendData);
+    const score = result2.score;
+    const color = scoreColor(score);
+
+    // 创建圆形标记
+    const circle = L.circleMarker([pLat, pLon], {
+      radius: 12,
+      fillColor: color,
+      fillOpacity: 0.7,
+      color: color,
+      weight: 1,
+      opacity: 0.9,
+    }).addTo(_cloudMap);
+
+    // 添加分数标签
+    const labelIcon = L.divIcon({
+      className: 'score-label-icon',
+      html: `<div style="font-size:9px;font-weight:700;color:#fff;text-align:center;line-height:18px;text-shadow:0 1px 2px rgba(0,0,0,0.5)">${score}</div>`,
+      iconSize: [24, 18],
+      iconAnchor: [12, 9],
+    });
+    const labelMarker = L.marker([pLat, pLon], { icon: labelIcon, interactive: false }).addTo(_cloudMap);
+
+    // 点击显示详情
+    circle.on('click', () => {
+      const dist = Math.round(distance(lat, lon, pLat, pLon));
+      const dir = bearing(lat, lon, pLat, pLon);
+      const dirStr = ['北','东北','东','东南','南','西南','西','西北'][Math.round(dir / 45) % 8];
+      infoEl.innerHTML =
+        `<span class="info-score" style="color:${color}">${score}</span> ${scoreLabel(score)} ` +
+        `<span style="color:var(--text-dim)">· ${dirStr} ${dist >= 1000 ? (dist/1000).toFixed(1) + 'km' : dist + 'm'}</span>` +
+        ` · 云量 ${d.cloudCover}% · 低云 ${d.cloudLow}% · 高云 ${d.cloudHigh}%` +
+        ` · 能见度 ${(d.visibility/1000).toFixed(1)}km`;
+    });
+
+    _cloudMapMarkers.push(circle);
+    _cloudMapMarkers.push(labelMarker);
+  });
+
+  // 中心点分数
+  const centerResult = state.forecastData ?
+    calcScore(extractHourlyData(state.forecastData,
+      findHourlyIndex(state.forecastData, di, _cloudMapType)), _cloudMapType, null) : null;
+
+  infoEl.innerHTML = successCount > 0
+    ? `✅ ${successCount} 个采样点 · 中心评分 <span class="info-score" style="color:${centerResult ? scoreColor(centerResult.score) : '#888'}">${centerResult?.score || '--'}</span> ${centerResult ? scoreLabel(centerResult.score) : ''} · ${_cloudMapType === 'morning' ? '🌄 朝霞' : '🌅 晚霞'}`
+    : '❌ 采样失败，请重试';
+
+  _cloudMapLoading = false;
+}
+
+// 获取单个网格点的气象数据
+async function fetchGridPoint(lat, lon, di) {
+  try {
+    const params = new URLSearchParams({
+      latitude: lat.toFixed(2),
+      longitude: lon.toFixed(2),
+      hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,visibility,temperature_2m,precipitation_probability,dew_point_2m',
+      daily: 'sunrise,sunset',
+      timezone: 'auto',
+      forecast_days: 3,
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    // 找到目标时刻的小时索引
+    const dateStr = data.daily?.time?.[di];
+    if (!dateStr) return null;
+    const eventISO = _cloudMapType === 'morning'
+      ? data.daily.sunrise?.[di] : data.daily.sunset?.[di];
+    if (!eventISO) return null;
+    const eventHour = new Date(eventISO).getHours();
+
+    let bestIdx = 0, bestDiff = 99;
+    data.hourly.time.forEach((t, i) => {
+      if (t.startsWith(dateStr)) {
+        const h = new Date(t).getHours();
+        const diff = Math.abs(h - eventHour);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+    });
+
+    return extractHourlyData(data, bestIdx);
+  } catch(e) {
+    return null;
+  }
 }
 
 // === 启动 ===

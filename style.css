@@ -1101,6 +1101,125 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
   text-align: center;
 }
 
+/* 云层地图弹窗 */
+.cloud-map-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.cloud-map-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.cloud-map-container {
+  flex: 1;
+  min-height: 0;
+}
+.cloud-map-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.cml-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cml-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.cloud-map-info {
+  padding: 8px 14px;
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--text);
+  flex-shrink: 0;
+  min-height: 40px;
+}
+
+/* 云层地图弹窗 */
+.cloud-map-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.cloud-map-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.cloud-map-container {
+  flex: 1;
+  min-height: 0;
+}
+.cloud-map-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.cml-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.cml-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.cml-arrow {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 500;
+}
+.cloud-map-info {
+  padding: 8px 14px;
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  min-height: 44px;
+}
+.cloud-map-info .info-score {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
 /* Footer */
 .footer {
   margin-top: 28px;
