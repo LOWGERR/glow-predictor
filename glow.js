@@ -2323,7 +2323,7 @@ function buildPredictionCard(label, type, score, prob, quality, confidence, data
       <div class="btn-row">
         <button class="nearby-btn" onclick="openNearbySearch('${type}')">📷 附近摄影点</button>
         <button class="share-btn" onclick="sharePrediction(${score}, '${type}', '${timeRange}', '${verdictText}')">📤 分享预测</button>
-        <button class="share-btn" onclick="openCloudMap()">🗺️ 云层地图</button>
+        <button class="share-btn" onclick="openCloudMap('${type}')">${type === 'morning' ? '🌄 朝霞地图' : '🌇 晚霞地图'}</button>
       </div>
       <div class="data-source">🌐 ${getSourceLabel()}${state.aodData ? " · AOD" : ""}${state.sunPathData ? " · 光路" : ""}${confidence ? " · 置信度" + confidence + "%" : ""}</div>
     </div>
@@ -2540,11 +2540,9 @@ let _cloudMapMarkers = [];
 let _cloudMapType = 'evening'; // 'morning' | 'evening'
 let _cloudMapLoading = false;
 
-function openCloudMap() {
-  if (!state.lat || !state.lon) {
-    alert('请先获取位置');
-    return;
-  }
+function openCloudMap(type) {
+  if (!state.lat || !state.lon) { alert('请先获取位置'); return; }
+  if (type) _cloudMapType = type;
   const modal = document.getElementById('cloudMapModal');
   modal.style.display = 'flex';
   document.getElementById('cloudMapTitle').textContent =
