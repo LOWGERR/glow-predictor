@@ -2537,27 +2537,34 @@ function openCloudMap() {
     alert('请先获取位置');
     return;
   }
-  document.getElementById('cloudMapModal').style.display = 'flex';
+  const modal = document.getElementById('cloudMapModal');
+  modal.style.display = 'flex';
   document.body.classList.add('no-scroll');
 
-  // 初始化地图
-  setTimeout(() => {
-    if (!_cloudMap) {
-      _cloudMap = L.map('cloudMapContainer', {
-        center: [state.lat, state.lon],
-        zoom: 9,
-        zoomControl: true,
-      });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap',
-        maxZoom: 18,
-      }).addTo(_cloudMap);
-    } else {
-      _cloudMap.invalidateSize();
-      _cloudMap.setView([state.lat, state.lon], 9);
-    }
-    loadCloudMapData();
-  }, 200);
+  // 等待 DOM 渲染完成后再初始化地图（关键！）
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      if (!_cloudMap) {
+        _cloudMap = L.map('cloudMapContainer', {
+          center: [state.lat, state.lon],
+          zoom: 9,
+          zoomControl: true,
+        });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap',
+          maxZoom: 18,
+        }).addTo(_cloudMap);
+      } else {
+        _cloudMap.invalidateSize();
+        _cloudMap.setView([state.lat, state.lon], 9);
+      }
+      // 确保瓦片加载
+      setTimeout(() => {
+        if (_cloudMap) _cloudMap.invalidateSize();
+      }, 300);
+      loadCloudMapData();
+    }, 100);
+  });
 }
 
 function closeCloudMap() {
