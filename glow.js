@@ -52,6 +52,27 @@ function init() {
   $tabBar.addEventListener('click', handleTabClick);
   // $locateBtn.addEventListener('click', autoLocate);
   document.getElementById('locateBtn').addEventListener('click', autoLocate);
+
+  // 欢迎引导：首次打开显示
+  const _savedLoc = localStorage.getItem('glow_predictor_location');
+  if (!_savedLoc) {
+    const overlay = document.getElementById('welcomeOverlay');
+    if (overlay) {
+      overlay.style.display = 'flex';
+      document.getElementById('welcomeLocate')?.addEventListener('click', () => {
+        overlay.style.display = 'none';
+        autoLocate();
+      });
+      document.getElementById('welcomeMap')?.addEventListener('click', () => {
+        overlay.style.display = 'none';
+        openMapPicker();
+      });
+      document.getElementById('welcomeSkip')?.addEventListener('click', () => {
+        overlay.style.display = 'none';
+        selectLocation(39.9042, 116.4074, '北京', '中国');
+      });
+    }
+  }
   $mapPickBtn.addEventListener('click', openMapPicker);
 
   const saved = localStorage.getItem('glow_predictor_location');
@@ -1969,6 +1990,28 @@ function calcProbability(d, type, trendData) {
     prob += _calcSolarElevationCorrection(state.lat, month, type);
   }
 
+
+  // 12. 雨后初晴加分
+  if (d.precipProb < 20) {
+    const _h = state.forecastData?.hourly;
+    if (_h && _h.precipitation_probability) {
+      const _ds = state.forecastData?.daily?.time[state.activeTab];
+      const _ei = type === 'morning' ? state.forecastData?.daily?.sunrise[state.activeTab] : state.forecastData?.daily?.sunset[state.activeTab];
+      if (_ds && _ei) {
+        const _eh = new Date(_ei).getHours();
+        let _mp = 0;
+        _h.time.forEach((t, i) => {
+          if (t.startsWith(_ds)) {
+            const h = new Date(t).getHours();
+            if (h >= _eh - 6 && h < _eh - 1) _mp = Math.max(_mp, _h.precipitation_probability[i] || 0);
+          }
+        });
+        if (_mp > 50) prob += 10;
+        else if (_mp > 30) prob += 5;
+      }
+    }
+  }
+
   return Math.max(0, Math.min(100, Math.round(prob)));
 }
 
@@ -2193,6 +2236,28 @@ function buildTips(d, type) {
 
   if (type === 'morning' && d.temp < 8) {
     tips.push('🥶 清晨气温低，注意<strong>保暖和电池续航</strong>。');
+
+  // v42: 霞光持续时间预测
+  const _cMH = Math.max(d.cloudMid || 0, d.cloudHigh || 0);
+  const _ws = d.windSpeed || 0;
+  let _dur = 15;
+  if (_cMH >= 20 && _cMH <= 60 && _ws < 20) _dur = 25;
+  else if (_cMH >= 15 && _cMH <= 70 && _ws < 30) _dur = 18;
+  else if (_ws > 35 || _cMH < 10 || _cMH > 80) _dur = 8;
+  else if (_cMH < 5) _dur = 5;
+  tips.push('⏱️ 预计霞光持续 <strong>' + _dur + '-' + (_dur + 5) + ' 分钟</strong>，' + (_dur >= 20 ? '有充足时间构图' : _dur >= 12 ? '建议提前到位' : '转瞬即逝，需快速反应') + '。');
+
+  // v42: 最佳拍摄方向推荐
+  if (state.lat != null && state.forecastData) {
+    const _dStr = state.forecastData.daily?.time[state.activeTab];
+    if (_dStr) {
+      const _sAz = _calcSolarAzimuth(state.lat, _dStr, type === 'morning' ? 'sunrise' : 'sunset');
+      const _dirName = ['北','东北','东','东南','南','西南','西','西北'][Math.round(_sAz / 45) % 8];
+      tips.push('📸 推荐朝向 <strong>' + _sAz + '°（' + _dirName + '方向）</strong>，正对' + (type === 'morning' ? '日出' : '日落') + '光线。');
+    }
+  }
+
+
   }
 
   // v41: 风速提示
@@ -2764,7 +2829,7 @@ if (document.readyState === 'loading') {
   init();
 }
 
-console.log('🌅 朝霞晚霞预测 v2 · 摄影助手已就绪');
+console.log('🌅 朝霞晚霞预测 v42 · 摄影助手已就绪');
 
 // 渲染本地地图（嵌入到预测卡片下方 — 仅作位置参考）
 
