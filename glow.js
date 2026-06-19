@@ -1115,6 +1115,7 @@ async function fetchForecast() {
   if (successData.length === 1) {
     const data = successData[0];
     data._source = data.meta && data.meta.models ? data.meta.models : data._model;
+    data.timezone = data.timezone || 'Asia/Shanghai';
     state.forecastData = data;
     state.ensembleData = null;
     renderAll(data);
@@ -1177,6 +1178,7 @@ async function fetchForecast() {
   }
 
   primary._source = modelLabel;
+  primary.timezone = primary.timezone || 'Asia/Shanghai';
   state.forecastData = primary;
   state.ensembleData = successData; // 保留各模型原始数据供调试
   renderAll(primary);
@@ -2500,7 +2502,7 @@ function renderDemo() {
     }
   }
 
-  const data = { daily, hourly };
+  const data = { daily, hourly, timezone: 'Asia/Shanghai' };
   state.forecastData = data;
   renderAll(data);
 
