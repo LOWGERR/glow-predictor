@@ -1,5 +1,5 @@
 const CACHE_NAME = 'glow-v38';
-const ASSETS = ['/', '/index.html', '/style.css', '/glow.js', '/manifest.json'];
+const ASSETS = ['/', '/index.html', '/style.css', '/state.js', '/scoring.js', '/map.js', '/ui.js', '/glow.js', '/manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));

@@ -10,7 +10,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>朝霞晚霞预测 · 摄影助手</title>
-<link rel="stylesheet" href="style.css?t=44">
+<link rel="stylesheet" href="style.css?t=45">
 </head>
 <body>
 <div class="app">
@@ -18,11 +18,13 @@
   <header class="header">
     <div class="header-top">
       <h1> 朝霞晚霞</h1>
-      <span class="header-badge">摄影助手 v44 · 云层地图</span>
+      <span class="header-badge">摄影助手 v45 · 云层地图</span>
     </div>
     <div class="location-row" id="locationRow">
       <span class="loc-icon">📍</span>
       <span class="loc-name" id="locName">—</span>
+      <button class="fav-btn" id="favBtn" title="收藏" style="display:none">☆</button>
+      <button class="fav-list-btn" id="favListBtn" title="常用位置">📋</button>
     </div>
     <!-- 位置操作按钮 -->
     <div class="location-actions">
@@ -202,6 +204,17 @@
   </div>
 </div>
 
+<!-- 常用位置收藏弹窗 -->
+<div class="favorites-modal" id="favoritesModal" style="display:none">
+  <div class="favorites-header">
+    <span class="favorites-title">⭐ 常用位置</span>
+    <button class="favorites-close" id="favoritesClose">✕</button>
+  </div>
+  <div class="favorites-list" id="favoritesList">
+    <div class="favorites-empty">还没有收藏位置</div>
+  </div>
+</div>
+
 <div class="cloud-map-modal" id="cloudMapModal" style="display:none">
   <div class="map-header">
     <button class="map-cancel-btn" id="cloudMapClose">←</button>
@@ -305,7 +318,7 @@
 <script src="scoring.js?v=44"></script>
 <script src="map.js?v=44"></script>
 <script src="ui.js?v=44"></script>
-<script src="glow.js?v=44"></script>
+<script type="module" src="glow.js?v=45"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
