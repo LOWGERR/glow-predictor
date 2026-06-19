@@ -656,11 +656,15 @@ async function fetchSunPathData(lat, lon, azimuth, dateStr, eventType) {
     });
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(`${FORECAST_URL}?${params}`, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return { dist: dist, weight: rayWeights[i], data: data, lat: sampleLat, lon: sampleLon };
+    try {
+      try {
+        const res = await fetch(`${FORECAST_URL}?${params}`, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return { dist: dist, weight: rayWeights[i], data: data, lat: sampleLat, lon: sampleLon };
+      } catch(e) { clearTimeout(timeout); return null; }
+    } catch(e) { clearTimeout(timeout); return null; }
   }));
 
   return results
@@ -1533,6 +1537,133 @@ function calcProbability(d, type, trendData) {
 
   return Math.max(0, Math.min(100, Math.round(prob)));
 }
+
+function calcQuality(d, type) {
+  // v5: 质量只回答"好不好看"——AOD、云型美观度、色彩饱和度
+  let quality = 50;
+  const cloudMid = d.cloudMid, cloudHigh = d.cloudHigh, cloudLow = d.cloudLow;
+  const cloudMH = Math.max(cloudMid, cloudHigh);
+  const h = d.humidity;
+  const v = d.visibility;
+
+  // 1. AOD 通透度：色彩饱和度的 #1 预测因子 (Henriksson 2019)
+  const aod = _getAOD(type, d);
+  if (aod) {
+    const aodVal = aod.value;
+    if (aod.source === 'real') {
+      if (aodVal < 0.05) quality += 18;
+      else if (aodVal < 0.1) quality += 12;
+      else if (aodVal < 0.2) quality += 5;
+      else if (aodVal < 0.4) quality -= 5;
+      else if (aodVal < 0.6) quality -= 12;
+      else quality -= 18;
+    } else {
+      if (aodVal < 0.08) quality += 10;
+      else if (aodVal < 0.15) quality += 6;
+      else if (aodVal < 0.3) quality += 2;
+      else if (aodVal < 0.5) quality -= 4;
+      else quality -= 10;
+    }
+  }
+
+  // 2. 云型美观度：高云 >> 低云
+  const highIsDominant = cloudHigh >= 30 && cloudLow < 40;
+  const multiLayer = cloudHigh > 15 && cloudLow > 10;
+  const overcast = d.cloudCover > 80;
+  if (highIsDominant && !overcast) {
+    quality += 15;
+    if (cloudHigh > 40) quality += 5;
+  } else if (cloudMH >= 18 && cloudMH <= 58) {
+    quality += 8;
+  } else if (cloudMH < 8) {
+    quality -= 15;
+  } else if (cloudMH > 80) {
+    quality -= 12;
+  }
+  if (multiLayer && !overcast) quality += 6;
+
+  // 3. 湿度：影响散射效果
+  if (h >= 40 && h <= 60) quality += 8;
+  else if (h >= 30 && h < 40) quality += 4;
+  else if (h > 60 && h <= 75) quality += 2;
+  else if (h > 85) quality -= 10;
+  else if (h < 25) quality -= 5;
+
+  // 4. 低云：影响地平线视野
+  if (cloudLow > 70) quality -= 15;
+  else if (cloudLow > 50) quality -= 8;
+
+  else if (cloudLow > 30) quality -= 3;
+  else if (cloudLow < 8 && cloudMH >= 15) quality += 4;
+
+  // 5. 联合修正
+  if (h > 70 && v < 4000) quality -= 10;
+  if (h > 82 && v < 6000) quality -= 7;
+  if (h >= 25 && h <= 55 && v > 10000 && cloudMH >= 15 && cloudMH <= 55) quality += 5;
+
+  // 6. 季节修正
+  if (state.lat != null) {
+    const month = new Date().getMonth() + 1;
+    quality += _calcSolarElevationCorrection(state.lat, month, type) * 0.3;
+  }
+
+  // 7. 风速（微风=大气稳定=散射均匀=色彩好）
+  if (d.windSpeed != null) {
+    if (d.windSpeed >= 3 && d.windSpeed <= 12) quality += 4;
+    else if (d.windSpeed > 12 && d.windSpeed <= 25) quality += 0;
+    else if (d.windSpeed > 25 && d.windSpeed <= 40) quality -= 4;
+    else if (d.windSpeed > 40) quality -= 8;
+  }
+
+  // 8. 气压绝对值（高气压=空气洁净=通透度高）
+  if (d.pressure != null) {
+    if (d.pressure > 1020) quality += 3;
+    else if (d.pressure > 1013) quality += 1;
+    else if (d.pressure < 1005) quality -= 3;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(quality)));
+}
+
+function calcScore(d, type, trendData) {
+  const prob = calcProbability(d, type, trendData);
+  const quality = calcQuality(d, type);
+  const confidence = calcConfidence(d, type);
+
+  // v5: 概率优先的分段加权
+  let baseScore;
+  if (prob < 15) {
+    baseScore = prob * 0.8 + quality * 0.2;
+  } else if (prob < 35) {
+    baseScore = prob * 0.65 + quality * 0.35;
+  } else if (prob < 65) {
+    baseScore = prob * 0.50 + quality * 0.50;
+  } else {
+    baseScore = prob * 0.40 + quality * 0.60;
+  }
+
+  // 趋势修正
+  let trendBonus = 0;
+  if (trendData && trendData.cloudTrend != null) {
+    if (type === 'morning') {
+      if (trendData.preEventTrend < -2 && trendData.preEventTrend > -12) trendBonus += 4;
+      if (trendData.lowCloudTrend < -4 && d.cloudLow < 35) trendBonus += 3;
+    } else {
+      if (Math.abs(trendData.preEventTrend) < 4) trendBonus += 3;
+      else if (trendData.preEventTrend > 0 && trendData.preEventTrend <= 6) trendBonus += 2;
+      if (trendData.highTrend > 1 && trendData.highTrend < 10) trendBonus += 3;
+    }
+  }
+  baseScore = baseScore * 0.85 + Math.min(trendBonus, 15) * (100 / 15) * 0.15;
+
+  // 置信度修正：数据不足时降低分数
+  const confFactor = 0.7 + (confidence / 100) * 0.3;
+  baseScore *= confFactor;
+
+  const finalScore = Math.max(0, Math.min(100, Math.round(baseScore)));
+  return { score: finalScore, prob, quality, confidence };
+}
+
 // === 一键分享预测卡片 ===
 async function sharePrediction(score, type, timeRange, verdictText) {
   const typeLabel = type === 'morning' ? '朝霞' : '晚霞';
