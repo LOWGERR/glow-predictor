@@ -2466,11 +2466,11 @@ function renderDemo() {
   for (let d = 0; d < 3; d++) {
     const date = new Date(now);
     date.setDate(date.getDate() + d);
-    const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+    const dateStr = date.toISOString().slice(0, 10);
     daily.time.push(dateStr);
 
-    const sunriseD = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 5, 10 + Math.floor(Math.random() * 20), 0));
-    const sunsetD = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 18, 30 + Math.floor(Math.random() * 30), 0));
+    const sunriseD = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 5, 10 + Math.floor(Math.random() * 20), 0);
+    const sunsetD = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 18, 30 + Math.floor(Math.random() * 30), 0);
     daily.sunrise.push(sunriseD.toISOString());
     daily.sunset.push(sunsetD.toISOString());
 
@@ -2480,7 +2480,7 @@ function renderDemo() {
     daily.precipitation_probability_max.push(sc.ppmax);
 
     for (let h = 0; h < 24; h++) {
-      const t = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), h, 0, 0));
+      const t = new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, 0, 0);
       hourly.time.push(t.toISOString());
       const jitter = Math.sin(h / 4) * 8;
       hourly.cloud_cover.push(Math.min(100, Math.max(0, Math.round(sc.cc + jitter))));
