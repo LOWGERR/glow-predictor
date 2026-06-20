@@ -2572,6 +2572,7 @@ function buildTips(d, type) {
 
   if (type === 'morning' && d.temp < 8) {
     tips.push('🥶 清晨气温低，注意<strong>保暖和电池续航</strong>。');
+  }
 
   // v42: 霞光持续时间预测
   const _cMH = Math.max(d.cloudMid || 0, d.cloudHigh || 0);
@@ -2581,6 +2582,8 @@ function buildTips(d, type) {
   else if (_cMH >= 15 && _cMH <= 70 && _ws < 30) _dur = 18;
   else if (_ws > 35 || _cMH < 10 || _cMH > 80) _dur = 8;
   else if (_cMH < 5) _dur = 5;
+  // 冰晶云持续时间更长
+  if (d.temp != null && d.temp < -15 && _cMH > 15) _dur = Math.min(_dur + 5, 30);
   tips.push('⏱️ 预计霞光持续 <strong>' + _dur + '-' + (_dur + 5) + ' 分钟</strong>，' + (_dur >= 20 ? '有充足时间构图' : _dur >= 12 ? '建议提前到位' : '转瞬即逝，需快速反应') + '。');
 
   // v42: 最佳拍摄方向推荐
@@ -2591,9 +2594,6 @@ function buildTips(d, type) {
       const _dirName = ['北','东北','东','东南','南','西南','西','西北'][Math.round(_sAz / 45) % 8];
       tips.push('📸 推荐朝向 <strong>' + _sAz + '°（' + _dirName + '方向）</strong>，正对' + (type === 'morning' ? '日出' : '日落') + '光线。');
     }
-  }
-
-
   }
 
   // v41: 风速提示
