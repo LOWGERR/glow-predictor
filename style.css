@@ -45,6 +45,18 @@ body {
 /* 全局交互元素过渡 */
 button, .tab-btn, .factor, .nearby-item, .result-item {
   transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+button:active, .tab-btn:active, .nearby-btn:active, .share-btn:active,
+.nearby-cat-btn:active, .nearby-item:active, .result-item:active,
+.fav-btn:active, .fav-list-btn:active, .theme-toggle:active,
+.map-confirm-btn:active, .map-cancel-btn:active {
+  transform: scale(0.92) !important;
+  opacity: 0.7 !important;
+  filter: brightness(0.85);
+  transition: transform 0.08s ease !important;
 }
 .weather-card { animation-delay: 0.08s; }
 .tab-bar { animation-delay: 0.16s; }
@@ -614,6 +626,37 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
   :root {
     --bg: #f5f5f7;
     --card-bg: #ffffff;
+  }
+  .nearby-modal {
+    background: #ffffff !important;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.15) !important;
+  }
+  .nearby-header {
+    background: #f5f5f7 !important;
+  }
+  .nearby-cat-btn {
+    background: #ffffff !important;
+    color: #1d1d1f !important;
+    border-color: rgba(0,0,0,0.1) !important;
+  }
+  .nearby-cat-btn.active {
+    background: #ff9800 !important;
+    color: #000 !important;
+  }
+  .nearby-item {
+    background: #ffffff !important;
+    border-color: rgba(0,0,0,0.08) !important;
+  }
+  .nearby-close {
+    color: #6e6e73 !important;
+  }
+  .cloud-map-modal {
+    background: #ffffff !important;
+  }
+  .cloud-map-header {
+    background: #ffffff !important;
+    border-color: rgba(0,0,0,0.08) !important;
+  }
     --card-bg2: #fafafa;
     --text: #1d1d1f;
     --text-dim: #6e6e73;

@@ -2616,29 +2616,7 @@ function buildTips(d, type) {
   }
 
 
-  // v49: 时间曲线（霞光强度随时间变化）
-  if (state.forecastData) {
-    const curve = buildTimeCurve(state.forecastData, state.activeTab, type);
-    if (curve && curve.length >= 3) {
-      const maxScore = Math.max(...curve.map(p => p.score));
-      const typeLabel = type === 'morning' ? '朝霞' : '晚霞';
-      let curveHtml = '<div style="margin-top:8px;padding:8px;background:rgba(0,0,0,0.15);border-radius:8px">';
-      curveHtml += '<div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:6px">📈 ' + typeLabel + '强度曲线</div>';
-      curveHtml += '<div style="display:flex;align-items:flex-end;gap:4px;height:60px">';
-      curve.forEach(p => {
-        const h = Math.max(8, (p.score / Math.max(maxScore, 1)) * 50);
-        const color = p.score >= 85 ? '#ff1744' : p.score >= 70 ? '#e040fb' : p.score >= 55 ? '#4caf50' : p.score >= 35 ? '#ffeb3b' : '#ff9800';
-        const isPeak = p.label === '🌅 峰值';
-        curveHtml += '<div style="flex:1;text-align:center">';
-        curveHtml += '<div style="height:' + h + 'px;background:' + color + ';border-radius:3px 3px 0 0;opacity:' + (isPeak ? '1' : '0.7') + ';margin:0 auto;width:100%"></div>';
-        curveHtml += '<div style="font-size:0.6rem;color:var(--text-dim);margin-top:2px">' + p.label + '</div>';
-        curveHtml += '<div style="font-size:0.65rem;font-weight:600;color:' + color + '">' + p.score + '</div>';
-        curveHtml += '</div>';
-      });
-      curveHtml += '</div></div>';
-      tips.push(curveHtml);
-    }
-  }
+
 
   return tips.join('<br>');
 }
