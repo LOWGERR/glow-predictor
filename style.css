@@ -864,6 +864,14 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
   cursor: pointer;
 }
 
+/* === 全局按钮点击反馈 === */
+button:active, .tab-btn:active, .nearby-btn:active, .share-btn:active,
+.nearby-cat-btn:active, .nearby-item:active, .result-item:active {
+  transform: scale(0.94);
+  opacity: 0.85;
+  transition: transform 0.1s ease;
+}
+
 /* 附近摄影点弹窗 */
 .nearby-modal {
   position: fixed;
@@ -890,7 +898,7 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
   font-size: 0.95rem;
   color: var(--text);
 }
-.nearby-close-btn {
+.nearby-close {
   background: none;
   border: none;
   font-size: 1.2rem;
@@ -1266,67 +1274,6 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
   min-width: 40px;
 }
 
-
-/* === 按钮点击反馈 === */
-button, .tab-btn, .nearby-btn, .share-btn, .fav-btn, .fav-list-btn,
-.welcome-btn, .map-confirm-btn, .map-cancel-btn, .map-locate-btn,
-.cloud-map-close, .cloud-map-toggle, .nearby-close, .favorites-close {
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.12s ease, opacity 0.12s ease, background 0.15s ease;
-}
-button:active, .tab-btn:active, .nearby-btn:active, .share-btn:active {
-  transform: scale(0.93);
-  opacity: 0.8;
-}
-
-/* === 附近摄影点弹窗 === */
-.nearby-modal {
-  position: fixed; inset: 0; z-index: 3000;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; padding: 20px;
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-}
-.nearby-header {
-  display: flex; justify-content: space-between; align-items: center;
-  width: 100%; max-width: 400px; margin-bottom: 12px;
-}
-.nearby-title { font-size: 1rem; font-weight: 600; }
-.nearby-close {
-  background: rgba(255,255,255,0.1); border: none; border-radius: 50%;
-  width: 32px; height: 32px; font-size: 1rem; color: var(--text);
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-}
-.nearby-close:active { background: rgba(255,255,255,0.2); transform: scale(0.9); }
-.nearby-categories {
-  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;
-  max-width: 400px; width: 100%;
-}
-.nearby-cat-btn {
-  padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border);
-  background: var(--card-bg); color: var(--text-dim); font-size: 0.78rem;
-  cursor: pointer; transition: all 0.15s;
-}
-.nearby-cat-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
-.nearby-cat-btn:active { transform: scale(0.93); }
-.nearby-results {
-  width: 100%; max-width: 400px; max-height: 60vh;
-  overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
-}
-.nearby-empty {
-  text-align: center; padding: 30px; color: var(--text-dim); font-size: 0.85rem;
-}
-.nearby-item {
-  display: flex; align-items: center; gap: 10px; padding: 12px;
-  background: var(--card-bg); border-radius: 12px; cursor: pointer;
-  border: 1px solid var(--border); transition: all 0.15s;
-}
-.nearby-item:active { transform: scale(0.97); background: rgba(255,152,0,0.08); }
-.nearby-item-icon { font-size: 1.3rem; }
-.nearby-item-info { flex: 1; min-width: 0; }
-.nearby-item-name { font-size: 0.88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nearby-item-dist { font-size: 0.72rem; color: var(--text-dim); }
-.nearby-item-arrow { font-size: 0.8rem; color: var(--text-dim); }
 
 /* === 云层预测地图弹窗 === */
 .cloud-map-modal {
