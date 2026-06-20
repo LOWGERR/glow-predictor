@@ -3145,7 +3145,7 @@ if (document.readyState === 'loading') {
   init();
 }
 
-console.log('🌅 朝霞晚霞预测 v50 · 摄影助手已就绪');
+console.log('🌅 朝霞晚霞预测 v52 · 摄影助手已就绪');
 
 // 渲染本地地图（嵌入到预测卡片下方 — 仅作位置参考）
 
