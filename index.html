@@ -10,7 +10,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>朝霞晚霞预测 · 摄影助手</title>
-<link rel="stylesheet" href="style.css?t=49">
+<link rel="stylesheet" href="style.css?t=50">
 </head>
 <body>
 <div class="app">
@@ -167,6 +167,18 @@
   </footer>
 </div>
 
+<!-- 附近摄影点弹窗 -->
+<div class="nearby-modal" id="nearbyModal" style="display:none">
+  <div class="nearby-header">
+    <span class="nearby-title">📷 附近摄影点</span>
+    <button class="nearby-close" id="nearbyClose">✕</button>
+  </div>
+  <div class="nearby-categories" id="nearbyCategories"></div>
+  <div class="nearby-results" id="nearbyResults">
+    <div class="nearby-empty">🔍 搜索中…</div>
+  </div>
+</div>
+
 <!-- 地图选择器弹窗 -->
 <div class="map-modal" id="mapModal" style="display:none">
   <div class="map-header">
@@ -188,10 +200,21 @@
 
 <script src="https://webapi.amap.com/maps?v=2.0&key=9a559408bacf3862588c08ad3a273edc"></script>
 
-<!-- 云层地图弹窗 -->
+<!-- 云层预测地图弹窗 -->
+<div class="cloud-map-modal" id="cloudMapModal" style="display:none">
+  <div class="cloud-map-header">
+    <button class="cloud-map-close" id="cloudMapClose">✕</button>
+    <span class="cloud-map-title" id="cloudMapTitle">🌅 晚霞预测地图</span>
+    <button class="cloud-map-toggle" id="cloudMapToggle">切换</button>
+  </div>
+  <div class="cloud-map-container" id="cloudMapContainer"></div>
+  <div class="cloud-map-info" id="cloudMapInfo">⏳ 正在加载…</div>
+</div>
+
+<!-- 云层地图资源 -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="glow.js?v=49"></script>
+<script src="glow.js?v=50"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
