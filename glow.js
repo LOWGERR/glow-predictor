@@ -54,21 +54,24 @@ function init() {
   document.getElementById('locateBtn').addEventListener('click', autoLocate);
 
   // 欢迎引导：首次打开显示
-  const _savedLoc = localStorage.getItem('glow_predictor_location');
-  if (!_savedLoc) {
+  const _welcomeShown = localStorage.getItem('glow_welcome_shown');
+  if (!_welcomeShown) {
     const overlay = document.getElementById('welcomeOverlay');
     if (overlay) {
       overlay.style.display = 'flex';
       document.getElementById('welcomeLocate')?.addEventListener('click', () => {
         overlay.style.display = 'none';
+        localStorage.setItem('glow_welcome_shown', '1');
         autoLocate();
       });
       document.getElementById('welcomeMap')?.addEventListener('click', () => {
         overlay.style.display = 'none';
+        localStorage.setItem('glow_welcome_shown', '1');
         openMapPicker();
       });
       document.getElementById('welcomeSkip')?.addEventListener('click', () => {
         overlay.style.display = 'none';
+        localStorage.setItem('glow_welcome_shown', '1');
         selectLocation(39.9042, 116.4074, '北京', '中国');
       });
     }
@@ -929,8 +932,8 @@ async function fetchAODData(lat, lon) {
 // 参考：霞光雷达 golden-hour-radar 的 3 段光路采样
 async function fetchSunPathData(lat, lon, azimuth, dateStr, eventType) {
   // 沿太阳方向采样 3 个距离点
-  const rayDistances = [35, 90, 160]; // km
-  const rayWeights = [0.45, 0.35, 0.20];
+  const rayDistances = [50, 120, 200, 300]; // v47: 扩展采样范围
+  const rayWeights = [0.35, 0.30, 0.20, 0.15]; // v47: 4段权重
 
   const radAz = azimuth * Math.PI / 180;
   const R = 6371; // 地球半径 km
@@ -1661,15 +1664,13 @@ function getTrendData(data, di, type) {
 
   if (windowPoints.length < 3) return null;
 
+  // v47: 指数加权移动平均（EWMA）—— 比简单平滑更能捕捉实时变化
   function smooth(arr, w = 3) {
-    if (arr.length < w) return arr;
-    const r = [];
-    for (let i = 0; i < arr.length; i++) {
-      const s = Math.max(0, i - Math.floor(w / 2));
-      const e = Math.min(arr.length, i + Math.ceil(w / 2));
-      let sum = 0;
-      for (let j = s; j < e; j++) sum += arr[j];
-      r.push(sum / (e - s));
+    if (arr.length < 2) return arr;
+    const alpha = 0.6; // 最近权重60%
+    const r = [arr[0]];
+    for (let i = 1; i < arr.length; i++) {
+      r.push(alpha * arr[i] + (1 - alpha) * r[i - 1]);
     }
     return r;
   }
@@ -2099,6 +2100,40 @@ function calcQuality(d, type) {
     else if (d.pressure < 1005) quality -= 3;
   }
 
+  // 9. 云相态估算（温度廓线判断冰晶云 vs 水云）
+  // Henriksson 2019: 卷云（冰晶）散射效果远优于积云（水云）
+  if (d.temp != null && cloudHigh > 15) {
+    if (d.temp < -20) quality += 8;   // 高空极冷，大概率冰晶卷云
+    else if (d.temp < -10) quality += 4; // 可能混合相态
+    else if (d.temp > 0) quality -= 3;   // 高空温暖，水云散射弱
+  }
+
+  // 10. 沙尘 vs 城市气溶胶细分
+  if (state.aodData?.hourly) {
+    const dustTimes = state.aodData.hourly.time;
+    const daily = state.forecastData?.daily;
+    if (daily) {
+      const eventISO = type === 'morning' ? daily.sunrise[0] : daily.sunset[0];
+      if (eventISO) {
+        const eventHour = new Date(eventISO).getHours();
+        const eventDate = dustTimes[0]?.slice(0, 10);
+        let dustVal = null;
+        dustTimes.forEach((t, i) => {
+          if (t.startsWith(eventDate) && Math.abs(new Date(t).getHours() - eventHour) <= 1) {
+            const v = state.aodData.hourly.dust?.[i];
+            if (v != null) dustVal = v;
+          }
+        });
+        if (dustVal != null) {
+          if (dustVal > 80) quality -= 10;  // 重度沙尘，通透度极差
+          else if (dustVal > 40) quality -= 5; // 中度沙尘
+          else if (dustVal < 10) quality += 3; // 无沙尘
+          // 注意：适度沙尘(10-40)可能产生独特红色霞光，不减分
+        }
+      }
+    }
+  }
+
   return Math.max(0, Math.min(100, Math.round(quality)));
 }
 
@@ -2107,16 +2142,18 @@ function calcScore(d, type, trendData) {
   const quality = calcQuality(d, type);
   const confidence = calcConfidence(d, type);
 
-  // v5: 概率优先的分段加权
+  // v47: 分段加权（概率优先，高概率时重质量）
   let baseScore;
-  if (prob < 15) {
-    baseScore = prob * 0.8 + quality * 0.2;
-  } else if (prob < 35) {
-    baseScore = prob * 0.65 + quality * 0.35;
-  } else if (prob < 65) {
-    baseScore = prob * 0.50 + quality * 0.50;
-  } else {
+  if (prob >= 70) {
+    // 高概率：重点看质量（去了不会失望）
+    baseScore = prob * 0.30 + quality * 0.70;
+  } else if (prob >= 50) {
     baseScore = prob * 0.40 + quality * 0.60;
+  } else if (prob >= 30) {
+    baseScore = prob * 0.55 + quality * 0.45;
+  } else {
+    // 低概率：概率才是决定性因素（去了大概率白跑）
+    baseScore = prob * 0.70 + quality * 0.30;
   }
 
   // 趋势修正
@@ -2133,7 +2170,7 @@ function calcScore(d, type, trendData) {
   }
   baseScore = baseScore * 0.85 + Math.min(trendBonus, 15) * (100 / 15) * 0.15;
 
-  // 置信度修正：数据不足时降低分数
+  // 置信度修正
   const confFactor = 0.7 + (confidence / 100) * 0.3;
   baseScore *= confFactor;
 
@@ -2182,6 +2219,50 @@ async function sharePrediction(score, type, timeRange, verdictText) {
     // 最终降级：prompt 让用户手动复制
     prompt('请长按复制以下预测信息：', text);
   }
+}
+
+
+// v47: 霞光强度时间曲线
+// 计算日出/日落前后每小时的预测评分，显示强度变化趋势
+function buildTimeCurve(data, di, type) {
+  const daily = data.daily;
+  const hourly = data.hourly;
+  const dateStr = daily.time[di];
+  if (!dateStr) return null;
+
+  const eventISO = type === 'morning' ? daily.sunrise[di] : daily.sunset[di];
+  if (!eventISO) return null;
+  const eventHour = new Date(eventISO).getHours();
+
+  // 前后各2小时，共5个点
+  const offsets = [-2, -1, 0, 1, 2];
+  const points = [];
+
+  offsets.forEach(offset => {
+    const targetHour = eventHour + offset;
+    let bestIdx = -1, bestDiff = 99;
+    hourly.time.forEach((t, i) => {
+      if (t.startsWith(dateStr)) {
+        const h = new Date(t).getHours();
+        const diff = Math.abs(h - targetHour);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+    });
+
+    if (bestIdx >= 0) {
+      const d = extractHourlyData(data, bestIdx);
+      const result = calcScore(d, type, null);
+      points.push({
+        hour: targetHour,
+        label: offset === 0 ? '🌅 峰值' : (offset < 0 ? (offset + 'h') : ('+' + offset + 'h')),
+        score: result.score,
+        prob: result.prob,
+        quality: result.quality,
+      });
+    }
+  });
+
+  return points;
 }
 
 // === 摄影建议 ===
