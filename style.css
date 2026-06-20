@@ -626,47 +626,19 @@ button:active, .tab-btn:active, .nearby-btn:active, .share-btn:active,
   :root {
     --bg: #f5f5f7;
     --card-bg: #ffffff;
-  }
-  .nearby-modal {
-    background: #ffffff !important;
-    box-shadow: 0 -4px 24px rgba(0,0,0,0.15) !important;
-  }
-  .nearby-header {
-    background: #f5f5f7 !important;
-  }
-  .nearby-cat-btn {
-    background: #ffffff !important;
-    color: #1d1d1f !important;
-    border-color: rgba(0,0,0,0.1) !important;
-  }
-  .nearby-cat-btn.active {
-    background: #ff9800 !important;
-    color: #000 !important;
-  }
-  .nearby-item {
-    background: #ffffff !important;
-    border-color: rgba(0,0,0,0.08) !important;
-  }
-  .nearby-close {
-    color: #6e6e73 !important;
-  }
-  .cloud-map-modal {
-    background: #ffffff !important;
-  }
-  .cloud-map-header {
-    background: #ffffff !important;
-    border-color: rgba(0,0,0,0.08) !important;
-  }
     --card-bg2: #fafafa;
     --text: #1d1d1f;
     --text-dim: #6e6e73;
-    --border: rgba(0,0,0,0.08);
+    --accent: #e67e00;
+    --accent2: #9c27b0;
+    --border: rgba(0, 0, 0, 0.1);
     --good: #34c759;
     --bad: #ff3b30;
     --warn: #ff9500;
-    --great: #af52de;
+    --great: #9c27b0;
     --blue: #007aff;
-    --text-secondary: #8e8e93;
+    --text-secondary: #6e6e73;
+    --radius: 16px;
   }
 
   body {
