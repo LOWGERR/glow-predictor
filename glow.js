@@ -8,6 +8,253 @@ const GEO_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const AIR_QUALITY_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality';
 
+
+// ════════════════════════════════════════════════════════════
+// v48: 历史准确率验证系统
+// ════════════════════════════════════════════════════════════
+// 原理：记录每天的预测评分，7天后用 Open-Meteo Historical API
+// 获取实际天气数据，对比预报云量 vs 实际云量，计算准确率。
+// 参考：sunsetbot.top 用 ERA-5 再分析数据做了混淆矩阵验证。
+
+const VERIFY_KEY = 'glow_predictions';
+const VERIFY_HISTORY_KEY = 'glow_verify_results';
+const VERIFY_API = 'https://archive-api.open-meteo.com/v1/archive';
+
+// 记录当天的预测评分
+function recordPrediction(dateStr, morningScore, eveningScore, lat, lon, morningCloudMH, eveningCloudMH) {
+  let records = [];
+  try { records = JSON.parse(localStorage.getItem(VERIFY_KEY)) || []; } catch(e) {}
+  // 避免重复记录同一天同一位置
+  const existing = records.findIndex(r => r.date === dateStr && Math.abs(r.lat - lat) < 0.01);
+  if (existing >= 0) records.splice(existing, 1);
+  records.push({
+    date: dateStr,
+    lat: lat,
+    lon: lon,
+    morningScore: morningScore,
+    eveningScore: eveningScore,
+    morningCloudMH: morningCloudMH || 0,
+    eveningCloudMH: eveningCloudMH || 0,
+    recordedAt: Date.now(),
+  });
+  // 只保留最近30天
+  records = records.filter(r => Date.now() - r.recordedAt < 30 * 86400000);
+  localStorage.setItem(VERIFY_KEY, JSON.stringify(records));
+}
+
+// 用历史数据验证过去的预测
+async function verifyPastPredictions() {
+  let records = [];
+  try { records = JSON.parse(localStorage.getItem(VERIFY_KEY)) || []; } catch(e) {}
+  if (records.length === 0) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 找出7天前的记录（有足够历史数据可以验证）
+  const toVerify = records.filter(r => {
+    const predDate = new Date(r.date);
+    const daysDiff = (today - predDate) / 86400000;
+    return daysDiff >= 2 && daysDiff <= 30; // 2天前到30天前的记录
+  });
+
+  if (toVerify.length === 0) return null;
+
+  // 按位置分组，批量获取历史数据
+  const byLocation = {};
+  toVerify.forEach(r => {
+    const key = r.lat.toFixed(1) + ',' + r.lon.toFixed(1);
+    if (!byLocation[key]) byLocation[key] = { lat: r.lat, lon: r.lon, records: [] };
+    byLocation[key].records.push(r);
+  });
+
+  const results = [];
+
+  for (const key of Object.keys(byLocation)) {
+    const loc = byLocation[key];
+    const dates = loc.records.map(r => r.date).sort();
+    const startDate = dates[0];
+    const endDate = dates[dates.length - 1];
+
+    try {
+      const params = new URLSearchParams({
+        latitude: loc.lat.toFixed(2),
+        longitude: loc.lon.toFixed(2),
+        start_date: startDate,
+        end_date: endDate,
+        hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,temperature_2m',
+        timezone: 'auto',
+      });
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${VERIFY_API}?${params}`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) continue;
+      const histData = await res.json();
+      if (!histData.hourly) continue;
+
+      // 对比每个记录
+      loc.records.forEach(rec => {
+        const dateStr = rec.date;
+        // 找到当天日出日落时刻的小时
+        const hourlyIndices = histData.hourly.time
+          .map((t, i) => ({ t, i }))
+          .filter(x => x.t.startsWith(dateStr));
+
+        if (hourlyIndices.length === 0) return;
+
+        // 用最接近日出/日落的小时作为实际值
+        // 朝霞：约5-7点，晚霞：约17-19点
+        const morningIdx = hourlyIndices.reduce((best, x) => {
+          const h = new Date(x.t).getHours();
+          return Math.abs(h - 6) < Math.abs(new Date(best.t).getHours() - 6) ? x : best;
+        });
+        const eveningIdx = hourlyIndices.reduce((best, x) => {
+          const h = new Date(x.t).getHours();
+          return Math.abs(h - 18) < Math.abs(new Date(best.t).getHours() - 18) ? x : best;
+        });
+
+        const actualMorningCloudMH = Math.max(
+          histData.hourly.cloud_cover_mid[morningIdx.i] || 0,
+          histData.hourly.cloud_cover_high[morningIdx.i] || 0
+        );
+        const actualEveningCloudMH = Math.max(
+          histData.hourly.cloud_cover_mid[eveningIdx.i] || 0,
+          histData.hourly.cloud_cover_high[eveningIdx.i] || 0
+        );
+
+        // 判断预测是否准确
+        // "好霞光"条件：中高层云 15-65%，低云 < 35%
+        const actualMorningGood = actualMorningCloudMH >= 15 && actualMorningCloudMH <= 65;
+        const actualEveningGood = actualEveningCloudMH >= 15 && actualEveningCloudMH <= 65;
+
+        // 预测评分阈值
+        const predictedMorningGood = rec.morningScore >= 55;
+        const predictedEveningGood = rec.eveningScore >= 55;
+
+        results.push({
+          date: dateStr,
+          morning: {
+            predicted: rec.morningScore,
+            actualCloudMH: actualMorningCloudMH,
+            predictedGood: predictedMorningGood,
+            actualGood: actualMorningGood,
+            correct: predictedMorningGood === actualMorningGood,
+          },
+          evening: {
+            predicted: rec.eveningScore,
+            actualCloudMH: actualEveningCloudMH,
+            predictedGood: predictedEveningGood,
+            actualGood: actualEveningGood,
+            correct: predictedEveningGood === actualEveningGood,
+          },
+        });
+      });
+    } catch(e) {
+      console.warn('历史验证数据获取失败:', e.message);
+    }
+  }
+
+  // 计算统计
+  if (results.length === 0) return null;
+
+  let totalCorrect = 0, totalCases = 0;
+  let truePositives = 0, falsePositives = 0, trueNegatives = 0, falseNegatives = 0;
+
+  results.forEach(r => {
+    ['morning', 'evening'].forEach(type => {
+      const p = r[type];
+      totalCases++;
+      if (p.correct) totalCorrect++;
+      if (p.predictedGood && p.actualGood) truePositives++;
+      if (p.predictedGood && !p.actualGood) falsePositives++;
+      if (!p.predictedGood && !p.actualGood) trueNegatives++;
+      if (!p.predictedGood && p.actualGood) falseNegatives++;
+    });
+  });
+
+  const accuracy = totalCases > 0 ? (totalCorrect / totalCases * 100).toFixed(1) : 0;
+  const precision = (truePositives + falsePositives) > 0
+    ? (truePositives / (truePositives + falsePositives) * 100).toFixed(1) : 0;
+  const recall = (truePositives + falseNegatives) > 0
+    ? (truePositives / (truePositives + falseNegatives) * 100).toFixed(1) : 0;
+
+  const verifyResult = {
+    timestamp: Date.now(),
+    totalCases,
+    accuracy: +accuracy,
+    precision: +precision,
+    recall: +recall,
+    truePositives,
+    falsePositives,
+    trueNegatives,
+    falseNegatives,
+    details: results.slice(-10), // 最近10条详情
+  };
+
+  // 保存验证结果
+  localStorage.setItem(VERIFY_HISTORY_KEY, JSON.stringify(verifyResult));
+  return verifyResult;
+}
+
+// 渲染验证报告到页面
+function renderVerifyReport(result) {
+  const container = document.getElementById('verifyReport');
+  if (!container) return;
+
+  if (!result || result.totalCases === 0) {
+    container.innerHTML = '<div class="verify-empty">📊 准确率报告将在使用2天后自动生成</div>';
+    return;
+  }
+
+  const accuracyColor = result.accuracy >= 70 ? '#4caf50' : result.accuracy >= 55 ? '#ffeb3b' : '#ff9800';
+  const precisionColor = result.precision >= 65 ? '#4caf50' : result.precision >= 50 ? '#ffeb3b' : '#ff9800';
+
+  let detailsHtml = '';
+  if (result.details && result.details.length > 0) {
+    detailsHtml = '<div class="verify-details">' +
+      result.details.slice(-5).reverse().map(r => {
+        const mIcon = r.morning.correct ? '✅' : '❌';
+        const eIcon = r.evening.correct ? '✅' : '❌';
+        return '<div class="verify-row">' +
+          '<span class="verify-date">' + r.date.slice(5) + '</span>' +
+          '<span>' + mIcon + ' 朝' + r.morning.predicted + '→实' + r.morning.actualCloudMH + '%</span>' +
+          '<span>' + eIcon + ' 晚' + r.evening.predicted + '→实' + r.evening.actualCloudMH + '%</span>' +
+          '</div>';
+      }).join('') +
+      '</div>';
+  }
+
+  container.innerHTML =
+    '<div class="verify-header">' +
+      '<div class="verify-title">📊 预测准确率报告</div>' +
+      '<div class="verify-subtitle">基于过去 ' + result.totalCases + ' 次预测验证</div>' +
+    '</div>' +
+    '<div class="verify-stats">' +
+      '<div class="verify-stat">' +
+        '<div class="verify-stat-value" style="color:' + accuracyColor + '">' + result.accuracy + '%</div>' +
+        '<div class="verify-stat-label">整体准确率</div>' +
+      '</div>' +
+      '<div class="verify-stat">' +
+        '<div class="verify-stat-value" style="color:' + precisionColor + '">' + result.precision + '%</div>' +
+        '<div class="verify-stat-label">高分精确率</div>' +
+      '</div>' +
+      '<div class="verify-stat">' +
+        '<div class="verify-stat-value" style="color:#64b5f6">' + result.recall + '%</div>' +
+        '<div class="verify-stat-label">召回率</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="verify-confusion">' +
+      '<div>✅ 预测有霞实际有: ' + result.truePositives + '</div>' +
+      '<div>❌ 预测有霞实际无: ' + result.falsePositives + '</div>' +
+      '<div>✅ 预测无霞实际无: ' + result.trueNegatives + '</div>' +
+      '<div>❌ 预测无霞实际有: ' + result.falseNegatives + '</div>' +
+    '</div>' +
+    detailsHtml;
+}
+
+
 // DOM
 let $loading, $predictions;
 let $locName, $weatherCard, $tabBar, $tabDate;
@@ -1377,6 +1624,14 @@ function renderTabPredictions(data) {
     morning: { score: morningScore, prob: morningProb, quality: morningQuality, confidence: morningConfidence },
     evening: { score: eveningScore, prob: eveningProb, quality: eveningQuality, confidence: eveningConfidence },
   };
+
+  // v48: 记录预测评分到 localStorage（用于历史验证）
+  if (state.lat && state.lon && di === 0) {
+    const dateStr = data.daily.time[di];
+    const morningCloudMH = Math.max(morningData.cloudMid || 0, morningData.cloudHigh || 0);
+    const eveningCloudMH = Math.max(eveningData.cloudMid || 0, eveningData.cloudHigh || 0);
+    recordPrediction(dateStr, morningScore, eveningScore, state.lat, state.lon, morningCloudMH, eveningCloudMH);
+  }
 
   const morningTips = buildTips(morningData, 'morning');
   const eveningTips = buildTips(eveningData, 'evening');

@@ -1213,6 +1213,75 @@ button, .tab-btn, .factor, .nearby-item, .result-item {
   opacity: 0.7;
 }
 
+
+/* 历史准确率验证报告 */
+.verify-report, #verifyReport {
+  margin-top: 12px;
+}
+.verify-empty {
+  text-align: center;
+  padding: 12px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+.verify-header {
+  text-align: center;
+  margin-bottom: 10px;
+}
+.verify-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.verify-subtitle {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.verify-stats {
+  display: flex;
+  justify-content: space-around;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.verify-stat {
+  text-align: center;
+  flex: 1;
+}
+.verify-stat-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.verify-stat-label {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.verify-confusion {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  padding: 8px;
+  background: rgba(0,0,0,0.15);
+  border-radius: 8px;
+}
+.verify-details {
+  margin-top: 8px;
+  font-size: 0.72rem;
+}
+.verify-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.verify-date {
+  color: var(--text-dim);
+  min-width: 40px;
+}
+
 /* 滚动条美化 */
 ::-webkit-scrollbar {
   width: 4px;
